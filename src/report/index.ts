@@ -36,51 +36,52 @@ function changeRow(change: ApiChange): string {
   return `| ${cell(change.classification)} | ${cell(change.method.toUpperCase())} | ${cell(change.path)} | ${cell(change.rule)} | ${cell(change.explanation)} |`;
 }
 
-function findingRow(finding: Finding, report: RunReport): string {
+function findingRow(finding: Finding, report: RunReport, language: 'en' | 'es'): string {
   const use = report.uses.find(item => item.id === finding.useId);
   const change = report.changes.find(item => item.id === finding.changeId);
-  const location = use ? `${use.file}:${use.range.line}:${use.range.column}` : 'uso desconocido';
+  const location = use ? `${use.file}:${use.range.line}:${use.range.column}` : language === 'es' ? 'uso desconocido' : 'unknown use';
   return `| ${cell(location)} | ${cell(change?.method.toUpperCase())} ${cell(change?.path)} | ${cell(finding.confidence)} | ${cell(finding.consequence)} | ${cell(finding.reviewStatus)} |`;
 }
 
 /** Export stored, inspectable results. The caller supplies a validated RunReport. */
-export function exportReport(report: RunReport, format: 'json' | 'markdown'): string {
+export function exportReport(report: RunReport, format: 'json' | 'markdown', language: 'en' | 'es' = 'es'): string {
   report = redactReport(report);
   if (format === 'json') return JSON.stringify(report, null, 2) + '\n';
+  const t = (es: string, en: string): string => language === 'es' ? es : en;
   const lines = [
-    '# APIPatch — informe de análisis',
+    t('# APIPatch — informe de análisis', '# APIPatch — analysis report'),
     '',
     `ID: ${safe(report.id)}`,
     '',
-    `OpenAPI anterior: ${safe(report.inputs.old.file)} (${safe(report.inputs.old.digest)})`,
+    `${t('OpenAPI anterior', 'Old OpenAPI')}: ${safe(report.inputs.old.file)} (${safe(report.inputs.old.digest)})`,
     '',
-    `OpenAPI nueva: ${safe(report.inputs.new.file)} (${safe(report.inputs.new.digest)})`,
+    `${t('OpenAPI nueva', 'New OpenAPI')}: ${safe(report.inputs.new.file)} (${safe(report.inputs.new.digest)})`,
     '',
-    `Repositorio: ${safe(report.inputs.repository ?? 'No analizado')}`,
+    `${t('Repositorio', 'Repository')}: ${safe(report.inputs.repository ?? t('No analizado', 'Not scanned'))}`,
     '',
-    '## Cambios de API',
+    t('## Cambios de API', '## API changes'),
     '',
-    '| Clasificación | Método | Ruta | Regla | Explicación |',
+    t('| Clasificación | Método | Ruta | Regla | Explicación |', '| Classification | Method | Path | Rule | Explanation |'),
     '| --- | --- | --- | --- | --- |',
     ...report.changes.map(changeRow),
     '',
-    '## Usos afectados',
+    t('## Usos afectados', '## Affected uses'),
     '',
-    '| Ubicación | Operación | Confianza | Consecuencia | Revisión |',
+    t('| Ubicación | Operación | Confianza | Consecuencia | Revisión |', '| Location | Operation | Confidence | Consequence | Review |'),
     '| --- | --- | --- | --- | --- |',
-    ...report.findings.map(finding => findingRow(finding, report)),
+    ...report.findings.map(finding => findingRow(finding, report, language)),
     '',
-    '## Reparaciones y verificación',
+    t('## Reparaciones y verificación', '## Repairs and verification'),
     '',
-    `Planes: ${report.repairs.length}. Comprobaciones: ${report.verification.length}.`,
+    t(`Planes: ${report.repairs.length}. Comprobaciones: ${report.verification.length}.`, `Plans: ${report.repairs.length}. Checks: ${report.verification.length}.`),
     '',
-    ...report.verification.map(item => `- Nivel ${item.level}: ${safe(item.status)} — ${safe(item.properties.join('; '))}${item.reason ? ` (${safe(item.reason)})` : ''}`),
+    ...report.verification.map(item => `- ${t('Nivel', 'Level')} ${item.level}: ${safe(item.status)} — ${safe(item.properties.join('; '))}${item.reason ? ` (${safe(item.reason)})` : ''}`),
     '',
-    '## Limitaciones',
+    t('## Limitaciones', '## Limitations'),
     '',
-    ...(report.limitations.length ? report.limitations.map(item => `- ${safe(item)}`) : ['- Ninguna limitación adicional registrada.']),
+    ...(report.limitations.length ? report.limitations.map(item => `- ${safe(item)}`) : [t('- Ninguna limitación adicional registrada.', '- No additional limitations recorded.')]),
     '',
-    'El resultado de pruebas locales no demuestra compatibilidad con producción.',
+    t('El resultado de pruebas locales no demuestra compatibilidad con producción.', 'Passing local checks does not demonstrate production compatibility.'),
     '',
   ];
   return lines.join('\n');

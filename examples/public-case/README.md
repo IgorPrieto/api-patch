@@ -1,5 +1,7 @@
 # Caso basado en un cambio documentado de GitHub
 
+[English](README.en.md) · [Español](README.md)
+
 GitHub [anunció el 10 de diciembre de 2024](https://github.blog/changelog/2024-12-10-notice-of-breaking-changes-security-manager-rest-api-will-be-retired-and-replaced-with-the-organization-roles-rest-api/) la retirada de tres endpoints de security managers, incluido `GET /orgs/{org}/security-managers/teams`, con fecha anunciada para GitHub.com de 31 de diciembre de 2025. La misma nota enumera `GET /orgs/{org}/roles/{role_id}/teams` entre los endpoints de la API de roles para migrar.
 
 `old.yaml` y `new.yaml` son **reconstrucciones mínimas nuestras**, no versiones publicadas del OpenAPI de GitHub. Incluyen solo rutas y parámetros necesarios para demostrar detección de un endpoint retirado. `consumer.js` también es sintético y no debe ejecutarse contra GitHub. No inferimos que reemplazar la ruta conserve semántica: la ruta nueva exige un `role_id` cuya obtención depende del flujo del usuario. Por eso este caso debe quedar para revisión manual y no producir un parche automático sin un mapeo y valor confirmados.

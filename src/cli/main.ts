@@ -15,7 +15,14 @@ import { verifyRepairPlan } from '../verify/index.js';
 type Common = { old: string; new: string; json?: boolean; out?: string; failOn?: string };
 const program = new Command();
 const packageVersion = (JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string }).version;
-program.name('apipatch').description('OpenAPI changes, affected JS/TS consumers and reviewable repairs').version(packageVersion);
+program.name('apipatch').description('OpenAPI changes, affected JS/TS consumers and reviewable repairs').version(packageVersion)
+  .option('--lang <language>', 'Human-readable output language: en or es', 'en');
+function language(): 'en' | 'es' {
+  const value = program.opts<{ lang: string }>().lang;
+  if (value !== 'en' && value !== 'es') throw new Error('--lang must be en or es');
+  return value;
+}
+function t(en: string, es: string): string { return language() === 'es' ? es : en; }
 
 async function save(file: string, text: string): Promise<void> {
   const target = resolve(file);
@@ -31,18 +38,18 @@ async function readPlan(file: string): Promise<RepairPlan> {
 function summaries(changes: ApiChange[]): string {
   const counts = { breaking: 0, compatible: 0, ambiguous: 0 };
   for (const change of changes) counts[change.classification]++;
-  return `${changes.length} cambios: ${counts.breaking} incompatibles, ${counts.compatible} compatibles, ${counts.ambiguous} ambiguos`;
+  return t(`${changes.length} changes: ${counts.breaking} breaking, ${counts.compatible} compatible, ${counts.ambiguous} ambiguous`, `${changes.length} cambios: ${counts.breaking} incompatibles, ${counts.compatible} compatibles, ${counts.ambiguous} ambiguos`);
 }
 function diagnosticLines(diagnostics: Diagnostic[]): string {
   return diagnostics.length ? '\n' + diagnostics.slice(0, 10).map(item => `  [${item.severity}] ${item.code}: ${item.message}`).join('\n')
-    + (diagnostics.length > 10 ? `\n  … ${diagnostics.length - 10} diagnósticos más en la salida JSON` : '') : '';
+    + (diagnostics.length > 10 ? t(`\n  … ${diagnostics.length - 10} more diagnostics in JSON output`, `\n  … ${diagnostics.length - 10} diagnósticos más en la salida JSON`) : '') : '';
 }
 function emit(value: unknown, human: string, json: boolean | undefined): void {
   process.stdout.write(json ? JSON.stringify(value, null, 2) + '\n' : human + '\n');
 }
 function failOn(changes: ApiChange[], threshold?: string): void {
   if (!threshold || threshold === 'none') return;
-  if (threshold !== 'breaking' && threshold !== 'ambiguous') throw new Error('--fail-on debe ser breaking, ambiguous o none');
+  if (threshold !== 'breaking' && threshold !== 'ambiguous') throw new Error(t('--fail-on must be breaking, ambiguous or none', '--fail-on debe ser breaking, ambiguous o none'));
   const failed = threshold === 'ambiguous'
     ? changes.some(change => change.classification !== 'compatible')
     : changes.some(change => change.classification === 'breaking');
@@ -64,7 +71,7 @@ addCompareOptions(program.command('compare').description('Compare two OpenAPI de
     const diagnostics = [...oldApi.diagnostics, ...newApi.diagnostics];
     const result = { schemaVersion: SCHEMA_VERSION, old: { file: options.old, digest: oldApi.digest }, new: { file: options.new, digest: newApi.digest }, changes, diagnostics, limitations: COMPARE_LIMITATIONS };
     if (options.out) await save(options.out, JSON.stringify(result, null, 2) + '\n');
-    emit(result, `${summaries(changes)}; ${diagnostics.length} diagnósticos; ${COMPARE_LIMITATIONS.length} límites documentados${diagnosticLines(diagnostics)}`, options.json);
+    emit(result, t(`${summaries(changes)}; ${diagnostics.length} diagnostics; ${COMPARE_LIMITATIONS.length} documented limitations${diagnosticLines(diagnostics)}`, `${summaries(changes)}; ${diagnostics.length} diagnósticos; ${COMPARE_LIMITATIONS.length} límites documentados${diagnosticLines(diagnostics)}`), options.json);
     failOn(changes, options.failOn);
   });
 
@@ -85,7 +92,7 @@ addCompareOptions(program.command('scan').description('Find affected fetch and a
     };
     const publicReport = redactReport(report);
     if (options.out) await save(options.out, exportReport(publicReport, 'json'));
-    emit(publicReport, `${summaries(changes)}; ${report.uses.length} usos HTTP; ${report.findings.length} hallazgos; ${publicReport.limitations.length} límites${diagnosticLines(report.diagnostics)}`, options.json);
+    emit(publicReport, t(`${summaries(changes)}; ${report.uses.length} HTTP uses; ${report.findings.length} findings; ${publicReport.limitations.length} limitations${diagnosticLines(report.diagnostics)}`, `${summaries(changes)}; ${report.uses.length} usos HTTP; ${report.findings.length} hallazgos; ${publicReport.limitations.length} límites${diagnosticLines(report.diagnostics)}`), options.json);
     failOn(changes, options.failOn);
   });
 
@@ -99,9 +106,9 @@ program.command('repair').description('Preview or explicitly apply a repair plan
   .option('--json', 'Machine-readable output')
   .action(async (options: { report?: string; migration?: string; repo?: string; out?: string; apply?: string; appliedOut?: string; json?: boolean }) => {
     if (options.apply) {
-      if (!options.repo) throw new Error('--repo es obligatorio para aplicar');
+      if (!options.repo) throw new Error(t('--repo is required to apply', '--repo es obligatorio para aplicar'));
       const destination = resolve(options.appliedOut ?? resolve(dirname(options.apply), 'plan.applied.json'));
-      if (destination === resolve(options.apply)) throw new Error('El plan aplicado debe guardarse en una ruta distinta del plan original');
+      if (destination === resolve(options.apply)) throw new Error(t('The applied plan must be saved at a different path from the original plan', 'El plan aplicado debe guardarse en una ruta distinta del plan original'));
       const plan = await readPlan(options.apply);
       const result = await applyRepairPlan(plan, options.repo);
       const already = result.diagnostics.filter(item => item.code === 'REPAIR_ALREADY_APPLIED').length;
@@ -111,12 +118,12 @@ program.command('repair').description('Preview or explicitly apply a repair plan
         await save(appliedPath, JSON.stringify({ ...plan, applicationStatus: 'applied' }, null, 2) + '\n');
       }
       emit(result, result.status === 'conflict'
-        ? `Aplicación en conflicto; no se generó plan aplicado`
-        : `Aplicación ${result.status}: ${result.files.length - already} archivos modificados, ${already} ya aplicados; plan aplicado: ${appliedPath}`, options.json);
+        ? t('Application conflict; no applied plan was generated', 'Aplicación en conflicto; no se generó plan aplicado')
+        : t(`Application ${result.status}: ${result.files.length - already} files modified, ${already} already applied; applied plan: ${appliedPath}`, `Aplicación ${result.status}: ${result.files.length - already} archivos modificados, ${already} ya aplicados; plan aplicado: ${appliedPath}`), options.json);
       if (result.status === 'conflict') process.exitCode = 3;
       return;
     }
-    if (!options.report || !options.migration || !options.repo) throw new Error('Se requieren --report, --migration y --repo para generar un plan');
+    if (!options.report || !options.migration || !options.repo) throw new Error(t('--report, --migration and --repo are required to generate a plan', 'Se requieren --report, --migration y --repo para generar un plan'));
     const report = await readReport(options.report);
     const migration = await loadMigration(resolve(options.migration));
     const plan = await planRepairs({ report, migration, repository: options.repo });
@@ -124,7 +131,7 @@ program.command('repair').description('Preview or explicitly apply a repair plan
       await save(resolve(options.out, 'plan.json'), JSON.stringify(plan, null, 2) + '\n');
       await save(resolve(options.out, 'repair.patch'), plan.unifiedDiff);
     }
-    emit(plan, `${plan.files.length} archivos con propuesta; ${plan.pendingFindingIds.length} hallazgos pendientes de revisión`, options.json);
+    emit(plan, t(`${plan.files.length} files with proposed edits; ${plan.pendingFindingIds.length} findings pending review`, `${plan.files.length} archivos con propuesta; ${plan.pendingFindingIds.length} hallazgos pendientes de revisión`), options.json);
   });
 
 program.command('verify').description('Verify a repair plan in a local repository')
@@ -139,10 +146,10 @@ program.command('verify').description('Verify a repair plan in a local repositor
   .option('--timeout-ms <number>', 'Timeout for the authorized command')
   .option('--json', 'Machine-readable output')
   .action(async (options: { plan: string; repo: string; out?: string; demoContract?: boolean; allowRepoCommand?: boolean; command?: string; arg: string[]; cwd?: string; timeoutMs?: string; json?: boolean }) => {
-    if (options.command && !options.allowRepoCommand) throw new Error('--command requiere --allow-repo-command para autorizar su ejecución');
-    if (options.allowRepoCommand && !options.command) throw new Error('--allow-repo-command requiere --command');
+    if (options.command && !options.allowRepoCommand) throw new Error(t('--command requires --allow-repo-command to authorize execution', '--command requiere --allow-repo-command para autorizar su ejecución'));
+    if (options.allowRepoCommand && !options.command) throw new Error(t('--allow-repo-command requires --command', '--allow-repo-command requiere --command'));
     const timeoutMs = options.timeoutMs === undefined ? undefined : Number(options.timeoutMs);
-    if (timeoutMs !== undefined && (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 120_000)) throw new Error('--timeout-ms debe ser un entero entre 1 y 120000');
+    if (timeoutMs !== undefined && (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 120_000)) throw new Error(t('--timeout-ms must be an integer between 1 and 120000', '--timeout-ms debe ser un entero entre 1 y 120000'));
     const result = await verifyRepairPlan(await readPlan(options.plan), {
       repository: options.repo,
       ...(timeoutMs !== undefined ? { timeoutMs } : {}),
@@ -150,7 +157,7 @@ program.command('verify').description('Verify a repair plan in a local repositor
       ...(options.allowRepoCommand && options.command ? { authorization: { command: options.command, args: options.arg, cwd: resolve(options.cwd ?? options.repo), consent: true as const } } : {}),
     });
     if (options.out) await save(options.out, JSON.stringify(result, null, 2) + '\n');
-    emit(result, result.results.map(item => `Nivel ${item.level}: ${item.status}${item.reason ? ` (${item.reason})` : ''}`).join('\n'), options.json);
+    emit(result, result.results.map(item => `${t('Level', 'Nivel')} ${item.level}: ${item.status}${item.reason ? ` (${item.reason})` : ''}`).join('\n'), options.json);
     if (result.results.some(item => item.status === 'failed')) process.exitCode = 4;
     else if (result.results.some(item => item.status === 'blocked')) process.exitCode = 5;
   });
@@ -160,15 +167,15 @@ program.command('report').description('Export an analysis report')
   .requiredOption('--format <format>', 'json or markdown')
   .option('--out <file>', 'Output file')
   .action(async (options: { input: string; format: string; out?: string }) => {
-    if (options.format !== 'json' && options.format !== 'markdown') throw new Error('--format debe ser json o markdown');
-    const output = exportReport(await readReport(options.input), options.format);
+    if (options.format !== 'json' && options.format !== 'markdown') throw new Error(t('--format must be json or markdown', '--format debe ser json o markdown'));
+    const output = exportReport(await readReport(options.input), options.format, language());
     if (options.out) await save(options.out, output);
     else process.stdout.write(output);
   });
 
 program.command('demo').description('Run the reproducible local demo')
   .option('--verify-level4', 'Also verify the supported demo cases as level 4')
-  .action(async (options: { verifyLevel4?: boolean }) => { const { runDemo } = await import('../demo/runner.js'); await runDemo({ verifyLevel4: options.verifyLevel4 }); });
+  .action(async (options: { verifyLevel4?: boolean }) => { const { runDemo } = await import('../demo/runner.js'); await runDemo({ verifyLevel4: options.verifyLevel4, language: language() }); });
 program.command('ui').description('Open the local review panel')
   .option('--workspace <directory>', 'Repository directory the browser may analyze')
   .option('--port <port>', 'Local port', '0')

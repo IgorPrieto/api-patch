@@ -1,5 +1,7 @@
 # Archivo de migración
 
+[English](MIGRATION.en.md) · [Español](MIGRATION.md)
+
 El archivo JSON o YAML registra decisiones confirmadas. La forma inicial tiene `schemaVersion: "1.0"` y cuatro listas obligatorias. La CLI valida la estructura, versiones y duplicados antes de planear reparaciones; el reparador debe verificar además que los destinos existen en la API nueva y que hay un uso de código editable.
 
 ```yaml

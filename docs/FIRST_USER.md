@@ -1,5 +1,7 @@
 # Primera prueba con un usuario
 
+[English](FIRST_USER.en.md) · [Español](FIRST_USER.md)
+
 Pide a un equipo que mantenga una integración JavaScript/TypeScript y disponga de dos OpenAPI (antes/después) que pruebe APIPatch en un repositorio local de trabajo. La herramienta no necesita GitHub ni subir código. Reserva unos 30–45 minutos; no prometas ahorro o precisión antes de medirlos.
 
 1. Instala según [README](../README.md) y ejecuta `node dist/cli/main.js demo`. Comprueba que la salida distingue cambios reparados, ambiguos y niveles de verificación omitidos.

@@ -1,15 +1,18 @@
-# Validación observada de la beta 0.1.0-beta.2
+# Observed validation — APIPatch 0.1.0-beta.3
 
-Fecha: 2026-10-02. Entorno local Linux x64. Estas pruebas verifican la distribución y la demo sintética; no demuestran compatibilidad con una API de producción ni adopción por usuarios reales.
+Date: 2026-10-02. Local Linux x64 checks. They validate packaging and the synthetic demo, not production compatibility or adoption by real users.
 
-| Comprobación | Resultado observado |
+| Check | Observed result |
 | --- | --- |
-| Instalación de dependencias | `npm ci` terminó con código 0; 41 paquetes instalados y 0 vulnerabilidades notificadas por npm en esta ejecución. |
-| Node 24.21.0 | `npm run check` terminó con código 0: 15 archivos de pruebas, 177/177 pruebas aprobadas. Se usó el binario Node 24.21.0 para ejecutar los scripts. |
-| Node 26.5.0 | `npm run check` terminó con código 0: 15 archivos de pruebas, 177/177 pruebas aprobadas. |
-| Tarball | `npm pack` generó `apipatch-0.1.0-beta.2.tgz`; 113 archivos, sin documentos internos de orquestación. Instalación en directorio limpio: 5 paquetes de ejecución y código 0. |
-| CLI instalada con Node 24 | `apipatch --version` mostró `0.1.0-beta.2`; `apipatch --help` mostró los siete comandos; `apipatch demo --verify-level4` terminó con código 0. Consumidor v1 4/4, consumidor antiguo contra v2 falló en GET/POST, copia reparada 3/3 casos soportados; dos hallazgos ambiguos quedaron pendientes. |
+| Dependency installation | `npm ci` exited 0; 41 packages installed; npm reported 0 vulnerabilities in that run. |
+| Node 24.21.0 | `npm run check` exited 0: 15 test files, 178/178 tests passed. |
+| Node 26.5.0 | `npm run check` exited 0: 15 test files, 178/178 tests passed. |
+| Browser panel | Both local suites ran the real Chromium end-to-end test. The test analyzed and exported an English report, switched to Spanish and back, then exercised the Spanish analysis, patch preview, export, and explicit apply path. |
+| Package contents | `npm pack --dry-run` included the CLI build, panel assets, English/Spanish docs, demo, and example reports. |
+| Clean install | A generated `0.1.0-beta.3` tarball installed in a separate empty directory with five runtime packages. Its `apipatch --version` returned `0.1.0-beta.3`. |
+| Installed demo | `apipatch demo --verify-level4` exited 0. The old consumer failed against v2, while the temporary repaired copy passed 3/3 supported cases; two ambiguous findings remained pending. |
+| Language selection | The installed CLI produced a Spanish summary with `--lang es`; the default compare summary was also checked in English. The browser exported an English Markdown report. |
 
-La configuración de npm de este entorno rechaza instalar directamente una URL remota con `EALLOWREMOTE`. La ruta documentada descarga el tarball con `curl` y lo instala como archivo local; se comprobó la suma SHA-256 y el funcionamiento del paquete descargado. Esto no requiere una cuenta npm.
+Level 4 tests only the packaged synthetic contract. In the standalone example verification, level 3 is blocked by pre-existing fixture type errors and level 5 is skipped; see [verification.json](../examples/demo/verification.json). The [compatibility matrix](COMPATIBILITY.en.md) lists other limits.
 
-El nivel 4 solo prueba el contrato sintético empaquetado. En el ejemplo de verificación aislada, el nivel 3 está bloqueado por errores previos del fixture y el nivel 5 omitido; ver [verification.json](../examples/demo/verification.json). El recorrido e2e del panel usa Chromium cuando está disponible; las pruebas pueden omitirse en un entorno sin navegador y el resultado debe declararse como tal. La [matriz de compatibilidad](COMPATIBILITY.md) enumera otros límites.
+The development machine's npm configuration rejects direct remote-package installation with `EALLOWREMOTE`. The documented route downloads the tarball and installs it as a local file; it does not require an npm account. Technical evidence and some diagnostics are retained verbatim and may remain in Spanish.

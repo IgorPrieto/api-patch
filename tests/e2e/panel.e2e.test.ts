@@ -46,15 +46,46 @@ describe.skipIf(!chrome)('panel e2e in headless Chromium', () => {
   });
 
   it('refuses to work without the session token', { timeout: 30_000 }, async () => {
-    await page.goto(server.url);
+    await page.goto(`${server.url}?lang=es`);
     await page.waitFor(`!document.getElementById('session-error').hidden`);
     expect(await page.evaluate(`document.getElementById('session-error').textContent`)).toMatch(/token de sesión/);
     expect(await page.evaluate(`document.getElementById('analyze').disabled`)).toBe(true);
   });
 
+  it('analyzes and exports in English by default', async () => {
+    await page.goto(`${server.url}#token=${server.token}`);
+    await page.waitFor(`document.getElementById('workspace').textContent.startsWith('Authorized workspace')`);
+    expect(await page.evaluate('document.documentElement.lang')).toBe('en');
+    expect(await page.evaluate(`document.getElementById('inputs-title').textContent`)).toBe('1. Inputs');
+    expect(await page.evaluate(`document.getElementById('evidence-language').hidden`)).toBe(false);
+    await page.fill('#old', 'specs/v1.yaml');
+    await page.fill('#new', 'specs/v2.yaml');
+    await page.fill('#repository', 'repository');
+    await page.fill('#migration', 'migration.yaml');
+    await page.click('#analyze');
+    await page.waitFor(`document.getElementById('analyze-status').textContent.startsWith('Analysis complete')`, 60_000);
+    expect(await page.evaluate(`document.getElementById('summary').textContent`)).toContain('Changes8');
+    await page.click('#tab-verify');
+    expect(await page.evaluate(`document.getElementById('verification').textContent`)).toContain('Pending review (2)');
+    const done = new Promise<void>(resolve => { const off = browser.on('Browser.downloadProgress', params => { if (params.state === 'completed') { off(); resolve(); } }); });
+    await page.click('[data-export="markdown"]');
+    await done;
+    await page.waitFor(`document.getElementById('export-status').textContent.startsWith('Downloaded')`);
+    const names = await readdir(downloads);
+    const markdownName = names.find(name => name.endsWith('.md'));
+    expect(markdownName).toBeDefined();
+    expect(await readFile(path.join(downloads, markdownName!), 'utf8')).toContain('# APIPatch — analysis report');
+    await rm(path.join(downloads, markdownName!));
+    await page.click('#lang-es');
+    await page.waitFor(`document.getElementById('workspace').textContent.startsWith('Workspace autorizado')`);
+    expect(await page.evaluate('document.documentElement.lang')).toBe('es');
+    await page.click('#lang-en');
+    await page.waitFor(`document.getElementById('workspace').textContent.startsWith('Authorized workspace')`);
+  }, 90_000);
+
   it('walks selection → analysis → findings → diff → verification → export → apply', async () => {
     page.errors.length = 0;
-    await page.goto(`${server.url}#token=${server.token}`);
+    await page.goto(`${server.url}?lang=es#token=${server.token}`);
     await page.waitFor(`document.getElementById('workspace').textContent.startsWith('Workspace autorizado')`);
     expect(await page.evaluate('location.hash')).toBe('');
     expect(await page.evaluate('location.href')).not.toContain(server.token);

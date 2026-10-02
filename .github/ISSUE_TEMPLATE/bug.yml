@@ -1,32 +1,32 @@
-name: Fallo de instalación o uso
-description: Un comando o el panel falla o muestra un resultado inesperado.
+name: Bug / Fallo de uso
+description: A CLI command or panel action fails or returns an unexpected result. / Un comando o el panel falla o muestra un resultado inesperado.
 title: "[Bug] "
 body:
   - type: markdown
     attributes:
-      value: "No adjuntes secretos, OpenAPI privados ni código de terceros sin permiso. Para vulnerabilidades usa SECURITY.md."
+      value: "Do not attach secrets, private OpenAPI files, or third-party code without permission. For vulnerabilities use SECURITY.md. / No adjuntes secretos, OpenAPI privados ni código de terceros sin permiso."
   - type: input
     id: version
     attributes:
-      label: Versión de APIPatch y Node.js
-      placeholder: "0.1.0-beta.2; Node 24.x"
+      label: APIPatch and Node.js version / Versión de APIPatch y Node.js
+      placeholder: "0.1.0-beta.3; Node 24.x"
     validations:
       required: true
   - type: input
     id: platform
     attributes:
-      label: Sistema operativo
+      label: Operating system / Sistema operativo
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
-      label: Pasos para reproducir con datos sintéticos
+      label: Steps to reproduce with synthetic data / Pasos para reproducir con datos sintéticos
     validations:
       required: true
   - type: textarea
     id: result
     attributes:
-      label: Resultado observado y esperado
+      label: Observed and expected result / Resultado observado y esperado
     validations:
       required: true

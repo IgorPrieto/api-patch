@@ -1,5 +1,7 @@
 # Matriz de compatibilidad — APIPatch 0.1
 
+[English](COMPATIBILITY.en.md) · [Español](COMPATIBILITY.md)
+
 «Soportado» significa que el patrón tiene implementación y pruebas; no que cualquier programa que lo contenga pueda repararse. Cada informe incluye cambios, evidencias, confianza, pendientes y límites. Las equivalencias semánticas solo se aceptan desde el archivo de migración.
 
 | Área | Soportado | Revisión manual o fuera de alcance |

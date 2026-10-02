@@ -1,19 +1,21 @@
-# Beta pública: prueba APIPatch con un cambio real
+# Public beta: test APIPatch on a real API change
 
-APIPatch 0.1.0-beta.2 funciona en tu equipo. Buscamos comprobar si identifica usos afectados y produce reparaciones que un mantenedor aceptaría. No hay telemetría automática, cuenta ni envío de código a APIPatch.
+[English](PUBLIC_BETA.md) · [Español](PUBLIC_BETA.es.md)
 
-## Prueba de 15–30 minutos
+APIPatch runs on your computer. We want to learn whether it finds affected consumer calls and produces patches a maintainer would accept. There is no automatic telemetry, account requirement, or code upload.
 
-1. Instala la beta desde la [release](https://github.com/IgorPrieto/api-patch/releases/tag/v0.1.0-beta.2) siguiendo el [README](../README.md). Ejecuta `apipatch demo --verify-level4` para conocer qué significa cada estado.
-2. Elige dos versiones OpenAPI 3.0/3.1 y una **copia o rama** de un consumidor JavaScript/TypeScript que use `fetch` o `axios`. Ejecuta `compare` y `scan` según el README; el análisis no ejecuta el repositorio.
-3. Revisa los hallazgos de confianza alta y los pendientes. Para cada cambio real, anota si APIPatch encontró todas las llamadas afectadas, inventó alguna o dejó sin resolver un patrón que esperabas que cubriera.
-4. Si conoces una equivalencia de migración, configúrala y genera la vista previa con `repair`. Revisa el diff. Aplica solo en la copia o rama que controlas y ejecuta pruebas del repositorio únicamente si lo autorizas expresamente.
-5. Cuéntanos si el parche fue aceptado tal cual, editado, rechazado o quedó pendiente. Una prueba sintética o un nivel omitido no demuestra compatibilidad en producción.
+## A 15–30 minute test
 
-## Cómo enviar resultados
+1. Install the [beta release](https://github.com/IgorPrieto/api-patch/releases/tag/v0.1.0-beta.3) using the [README](../README.md). Run apipatch demo --verify-level4 to see what the verification states mean.
+2. Choose two OpenAPI 3.0/3.1 versions and a **copy or working branch** of a JavaScript/TypeScript consumer using fetch or axios. Run compare and scan as shown in the README. Analysis does not execute the consumer.
+3. Review high-confidence findings and pending cases. For each real change, record whether APIPatch found all affected calls, reported an unrelated call, or could not resolve a pattern you expected it to support.
+4. If you know a confirmed migration mapping, configure it and generate a preview with repair. Review the diff. Apply only to the copy or branch you control; authorize repository tests only if you trust the command.
+5. Tell us whether the patch was accepted unchanged, edited, rejected, or left pending. A synthetic demo or skipped verification level does not establish production compatibility.
 
-Usa los [formularios de issues](https://github.com/IgorPrieto/api-patch/issues/new/choose): fallo de uso, llamada afectada no detectada o evaluación de un parche. Indica versión de Node, sistema operativo, versión de APIPatch, patrón de llamada y resultado esperado/observado. Comparte un ejemplo **mínimo y sintético** si hace falta reproducirlo. No adjuntes especificaciones privadas, secretos, URLs con credenciales ni extractos de código cuyo propietario no autorice la publicación.
+## Send feedback
 
-Si prefieres medirlo sin publicar tu código, envía solo recuentos: llamadas afectadas revisadas, verdaderos positivos, falsos positivos, omisiones y parches aceptados/editados/rechazados. Etiqueta las cifras como observadas o estimadas. No inferiremos precisión a partir de descargas.
+Use the [issue forms](https://github.com/IgorPrieto/api-patch/issues/new/choose) for a usage failure, missed affected call, or patch review. Include the Node version, operating system, APIPatch version, HTTP-call pattern, expected result, and observed result. If needed, share a **minimal synthetic reproduction**. Do not attach private OpenAPI files, secrets, credential-bearing URLs, or code you cannot publish.
 
-La [matriz de compatibilidad](COMPATIBILITY.md) define el alcance: una URL dinámica, un wrapper propio, un cambio de autenticación o un campo anidado pueden requerir revisión manual. Para fallos de seguridad usa [divulgación privada](../SECURITY.md), nunca un issue público con detalles explotables.
+You can report counts without posting source: affected calls reviewed, true positives, false positives, omissions, and patches accepted/edited/rejected. Label observed and estimated numbers separately. Downloads alone do not measure accuracy.
+
+The [compatibility matrix](COMPATIBILITY.en.md) defines scope. Dynamic URLs, custom wrappers, authentication changes, and nested fields can require manual review. Report vulnerabilities through [private disclosure](../SECURITY.md), never through a public issue with exploit details.

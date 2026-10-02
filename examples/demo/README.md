@@ -1,5 +1,7 @@
 # Artefactos de la demo sintética
 
+[English](README.en.md) · [Español](README.md)
+
 Estos archivos se generaron con la CLI sobre `demo/specs/v1.yaml`, `demo/specs/v2.yaml` y `demo/repository` el 2026-10-01. Son **sintéticos** y conservan resultados reales de ejecución local, no métricas de clientes.
 Las rutas absolutas de los artefactos se normalizaron a `./` para publicarlos. Estos archivos muestran una ejecución observada, pero el plan de ejemplo no es portable ni debe aplicarse tal cual en otro checkout: vuelve a ejecutar los comandos para generar hashes y rutas actuales.
 

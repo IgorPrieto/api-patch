@@ -1,7 +1,9 @@
-# Seguridad
+# Security
 
-La versión 0.1.0-beta.2 recibe correcciones de seguridad; todavía no hay compromiso de soporte de versiones anteriores ni un SLA de respuesta.
+[English](SECURITY.md) · [Español](SECURITY.es.md)
 
-Comunica una posible vulnerabilidad mediante el [formulario privado de GitHub](https://github.com/IgorPrieto/api-patch/security/advisories/new). Incluye versión, impacto, pasos mínimos de reproducción y si implica lectura/escritura fuera del workspace, ejecución de código o exposición de secretos. No publiques detalles explotables en issues o discusiones.
+Security fixes are accepted for the current public beta. There is no support commitment for older betas or response-time SLA.
 
-APIPatch analiza repositorios sin ejecutar su código. La aplicación de parches y las pruebas del repositorio requieren acciones explícitas. El panel escucha en loopback y restringe rutas al workspace elegido; aun así, no uses una beta como garantía de seguridad o compatibilidad de producción.
+Report potential vulnerabilities through [GitHub private vulnerability reporting](https://github.com/IgorPrieto/api-patch/security/advisories/new). Include the version, impact, minimal reproduction, and whether the issue could read or write outside the selected workspace, execute code, or expose secrets. Do not publish exploit details in issues or discussions.
+
+APIPatch analyzes consumer repositories without executing their code. Applying a patch or running a repository command requires an explicit action. The browser panel binds to loopback and restricts paths to the chosen workspace. A beta is not a guarantee of security or production compatibility.

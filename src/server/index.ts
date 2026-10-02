@@ -168,9 +168,10 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
     }
     allow('GET');
     const format = url.searchParams.get('format');
+    const language = url.searchParams.get('lang') === 'en' ? 'en' : 'es';
     const stem = `apipatch-${run.report.id}`;
     if (format === 'json') return send(res, 200, 'application/json; charset=utf-8', exportReport(run.report, 'json'), attachmentName(`${stem}.json`));
-    if (format === 'markdown') return send(res, 200, 'text/markdown; charset=utf-8', exportReport(run.report, 'markdown'), attachmentName(`${stem}.md`));
+    if (format === 'markdown') return send(res, 200, 'text/markdown; charset=utf-8', exportReport(run.report, 'markdown', language), attachmentName(`${stem}.md`));
     if (format === 'patch') {
       if (!run.plan) throw new HttpError(404, 'NO_PLAN', 'Este análisis no tiene plan de reparación');
       return send(res, 200, 'text/x-diff; charset=utf-8', run.plan.unifiedDiff, attachmentName(`${stem}.patch`));

@@ -1,36 +1,36 @@
-name: Llamada afectada no detectada
-description: El análisis pasó por alto una llamada que debería relacionar con un cambio de API.
-title: "[Omisión] "
+name: Missed affected call / Llamada no detectada
+description: The scan missed a call that should match an API change. / El análisis pasó por alto una llamada afectada.
+title: "[Missed use] "
 body:
   - type: markdown
     attributes:
-      value: "Comparte solo un ejemplo mínimo y sintético. Consulta la matriz de compatibilidad antes de informar un patrón fuera de alcance."
+      value: "Share only a minimal synthetic example. Check the compatibility matrix first. / Comparte solo un ejemplo mínimo y sintético. Consulta la matriz de compatibilidad."
   - type: input
     id: version
     attributes:
-      label: Versión de APIPatch y Node.js
+      label: APIPatch and Node.js version / Versión de APIPatch y Node.js
     validations:
       required: true
   - type: dropdown
     id: client
     attributes:
-      label: Cliente HTTP
+      label: HTTP client / Cliente HTTP
       options:
         - fetch
         - axios
-        - otro
+        - other / otro
     validations:
       required: true
   - type: textarea
     id: synthetic
     attributes:
-      label: OpenAPI y llamada mínimos sintéticos
-      description: Explica el cambio y pega solo material que puedes publicar.
+      label: Minimal synthetic OpenAPI and call / OpenAPI y llamada mínimos sintéticos
+      description: Explain the change; paste only material you may publish. / Explica el cambio y pega solo material publicable.
     validations:
       required: true
   - type: textarea
     id: output
     attributes:
-      label: Resultado observado y asociación esperada
+      label: Observed result and expected match / Resultado observado y asociación esperada
     validations:
       required: true

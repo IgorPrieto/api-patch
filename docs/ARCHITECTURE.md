@@ -1,5 +1,7 @@
 # Arquitectura de APIPatch
 
+[English](ARCHITECTURE.en.md) · [Español](ARCHITECTURE.md)
+
 APIPatch es un paquete npm local. CLI y servidor llaman a módulos del mismo proceso; los informes JSON permiten separar análisis, revisión y aplicación. El panel no ejecuta código arbitrario del repositorio. El núcleo funciona sin modelos, cuentas o infraestructura externa.
 
 ```text

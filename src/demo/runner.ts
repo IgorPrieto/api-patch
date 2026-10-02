@@ -38,6 +38,8 @@ export interface DemoResult {
   limitations: string[];
 }
 export interface DemoOptions {
+  /** Language of the human-readable console transcript. Evidence stays verbatim. */
+  language?: 'en' | 'es';
   keepWorkspace?: boolean;
   signal?: AbortSignal;
   /** Opt-in: also ask verifyRepairPlan for level 4 (synthetic demo contract) and require it to pass. */
@@ -175,38 +177,39 @@ export async function runFullDemo(options: DemoOptions = {}): Promise<DemoResult
   }
 }
 
-function render(result: DemoResult): string {
-  const lines: string[] = ['APIPatch — demo sintética (API loopback efímera, copia temporal)', ''];
+function render(result: DemoResult, language: 'en' | 'es'): string {
+  const t = (es: string, en: string): string => language === 'es' ? es : en;
+  const lines: string[] = [t('APIPatch — demo sintética (API loopback efímera, copia temporal)', 'APIPatch — synthetic demo (ephemeral loopback API, temporary copy)'), ''];
   const runLine = (label: string, run: ContractRun): void => {
     lines.push(`${label}:`);
     for (const item of run.cases) {
-      const mark = item.status === 'passed' ? 'OK  ' : item.status === 'blocked' ? 'NO EJECUTADO' : item.supported ? 'FALLA' : 'PENDIENTE (no soportado)';
-      lines.push(`  ${mark} ${item.exportName}: esperado ${item.expected}, obtenido ${item.actual}`);
+      const mark = item.status === 'passed' ? 'OK  ' : item.status === 'blocked' ? t('NO EJECUTADO', 'NOT RUN') : item.supported ? t('FALLA', 'FAIL') : t('PENDIENTE (no soportado)', 'PENDING (unsupported)');
+      lines.push(`  ${mark} ${item.exportName}: ${t('esperado', 'expected')} ${item.expected}, ${t('obtenido', 'actual')} ${item.actual}`);
     }
   };
-  runLine('Consumidor original vs v1', result.runs.originalV1);
-  runLine('Consumidor original vs v2', result.runs.originalV2);
-  lines.push('', `Hallazgos (${result.findings.length}):`);
+  runLine(t('Consumidor original vs v1', 'Original consumer vs v1'), result.runs.originalV1);
+  runLine(t('Consumidor original vs v2', 'Original consumer vs v2'), result.runs.originalV2);
+  lines.push('', t(`Hallazgos (${result.findings.length}):`, `Findings (${result.findings.length}):`));
   for (const finding of result.findings) lines.push(`  [${finding.outcome}] ${finding.operation} ${finding.rule} (${finding.classification})`);
-  lines.push('', 'Plan de reparación (aplicado solo a la copia temporal):', result.plan.unifiedDiff.trimEnd(), '');
+  lines.push('', t('Plan de reparación (aplicado solo a la copia temporal):', 'Repair plan (applied only to the temporary copy):'), result.plan.unifiedDiff.trimEnd(), '');
   lines.push('verifyRepairPlan:');
   for (const item of result.verification.results) {
-    lines.push(`  Nivel ${item.level}: ${item.status}${item.reason ? ` (${item.reason})` : ''}`);
+    lines.push(`  ${t('Nivel', 'Level')} ${item.level}: ${item.status}${item.reason ? ` (${item.reason})` : ''}`);
     if (item.level === 4) for (const evidence of item.evidence) lines.push(`    ${evidence.message}`);
   }
   lines.push('');
-  runLine('Copia reparada vs v2', result.runs.repairedV2);
-  lines.push('', 'Comprobaciones:');
-  for (const check of result.checks) lines.push(`  ${check.passed ? 'OK   ' : 'FALLA'} ${check.name} — ${check.detail}`);
-  lines.push('', 'Límites:', ...result.limitations.map(item => `  - ${item}`), '');
-  lines.push(result.ok ? 'Demo completada: todas las comprobaciones pasaron.' : 'Demo fallida: hay comprobaciones sin cumplir.');
+  runLine(t('Copia reparada vs v2', 'Repaired copy vs v2'), result.runs.repairedV2);
+  lines.push('', t('Comprobaciones:', 'Checks:'));
+  for (const check of result.checks) lines.push(`  ${check.passed ? 'OK   ' : t('FALLA', 'FAIL')} ${check.name} — ${check.detail}`);
+  lines.push('', t('Límites:', 'Limitations:'), ...result.limitations.map(item => `  - ${item}`), '');
+  lines.push(result.ok ? t('Demo completada: todas las comprobaciones pasaron.', 'Demo complete: all checks passed.') : t('Demo fallida: hay comprobaciones sin cumplir.', 'Demo failed: some checks did not pass.'));
   return lines.join('\n') + '\n';
 }
 
 /** Entry point for `apipatch demo`: prints the evidence and fails when any check fails. */
 export async function runDemo(options: DemoOptions = {}): Promise<DemoResult> {
   const result = await runFullDemo(options);
-  process.stdout.write(render(result));
+  process.stdout.write(render(result, options.language ?? 'en'));
   if (!result.ok) throw new Error(`Demo checks failed: ${result.checks.filter(check => !check.passed).map(check => check.name).join('; ')}`);
   return result;
 }

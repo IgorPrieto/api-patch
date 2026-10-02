@@ -1,43 +1,43 @@
-name: Evaluación de un parche
-description: Explica si un parche propuesto fue útil, incorrecto o quedó pendiente.
-title: "[Parche] "
+name: Patch feedback / Evaluación de un parche
+description: Tell us whether a proposed patch was useful, wrong, or pending. / Explica si el parche fue útil, incorrecto o quedó pendiente.
+title: "[Patch] "
 body:
   - type: markdown
     attributes:
-      value: "No publiques diffs de clientes ni secretos sin permiso. Un resumen y una reproducción sintética bastan."
+      value: "Do not publish customer diffs or secrets without permission. A summary and synthetic reproduction suffice. / No publiques diffs de clientes ni secretos sin permiso."
   - type: input
     id: version
     attributes:
-      label: Versión de APIPatch y Node.js
+      label: APIPatch and Node.js version / Versión de APIPatch y Node.js
     validations:
       required: true
   - type: dropdown
     id: decision
     attributes:
-      label: Decisión del mantenedor
+      label: Maintainer decision / Decisión del mantenedor
       options:
-        - Aceptado sin cambios
-        - Aceptado con edición
-        - Rechazado
-        - Pendiente de revisión
+        - Accepted unchanged / Aceptado sin cambios
+        - Accepted with edits / Aceptado con edición
+        - Rejected / Rechazado
+        - Pending review / Pendiente de revisión
     validations:
       required: true
   - type: textarea
     id: transformation
     attributes:
-      label: Transformación propuesta y decisión de migración confirmada
+      label: Proposed transformation and confirmed mapping / Transformación propuesta y decisión confirmada
     validations:
       required: true
   - type: textarea
     id: reason
     attributes:
-      label: Motivo de aceptación, edición o rechazo
+      label: Reason for acceptance, edits, or rejection / Motivo de aceptación, edición o rechazo
     validations:
       required: true
   - type: textarea
     id: checks
     attributes:
-      label: Comprobaciones ejecutadas y estados
-      description: Distingue passed, failed, blocked y skipped.
+      label: Checks run and statuses / Comprobaciones ejecutadas y estados
+      description: Distinguish passed, failed, blocked, and skipped. / Distingue cada estado.
     validations:
       required: false

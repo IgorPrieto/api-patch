@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -12,6 +12,7 @@
   <a class="skip" href="#main">Saltar al contenido</a>
   <header class="top">
     <h1>APIPatch <span class="sub">panel local de revisión</span></h1>
+    <nav aria-label="Language / Idioma" class="language"><a id="lang-en" href="?lang=en" lang="en">English</a> · <a id="lang-es" href="?lang=es" lang="es">Español</a></nav>
     <p id="workspace" class="muted">Conectando con el servidor local…</p>
   </header>
   <div id="session-error" class="alert" role="alert" hidden></div>
@@ -67,6 +68,7 @@
     <section id="results" aria-labelledby="results-title" class="card" hidden>
       <h2 id="results-title" tabindex="-1">2. Resultados</h2>
       <p id="run-inputs" class="muted"></p>
+      <p id="evidence-language" class="muted" hidden>Technical explanations, diagnostics and source evidence are shown verbatim; some remain in Spanish.</p>
       <dl id="summary" class="summary"></dl>
       <div id="plan-error" class="alert" role="alert" hidden></div>
       <div role="tablist" aria-label="Secciones de resultados" class="tabs" id="tabs">

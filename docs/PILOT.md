@@ -1,5 +1,7 @@
 # Primer usuario, entrevistas y piloto
 
+[English](PILOT.en.md) · [Español](PILOT.md)
+
 ## Cliente e hipótesis
 
 El primer perfil a entrevistar es una persona responsable de integraciones JavaScript/TypeScript que consume APIs documentadas con OpenAPI y mantiene varios puntos de llamada. El problema propuesto: un cambio de contrato obliga a descubrir usos, decidir migraciones y reunir pruebas de que el parche es seguro. Esto es una hipótesis de necesidad, todavía sin validación con usuarios.

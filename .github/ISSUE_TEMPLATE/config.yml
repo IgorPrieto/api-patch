@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Informe privado de seguridad
+  - name: Private security report / Informe privado de seguridad
     url: https://github.com/IgorPrieto/api-patch/security/advisories/new
-    about: Usa divulgación privada para vulnerabilidades; no publiques detalles explotables.
+    about: Use private disclosure for vulnerabilities; do not publish exploit details. / Usa divulgación privada.

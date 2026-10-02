@@ -1,5 +1,7 @@
 # Demo sintética (T5b)
 
+[English](README.en.md) · [Español](README.md)
+
 ```sh
 npm run build && node dist/cli/main.js demo   # exit 0 only if every check passes
 npx vitest run tests/integration/demo.test.ts

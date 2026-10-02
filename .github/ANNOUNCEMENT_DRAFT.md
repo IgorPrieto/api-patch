@@ -1,4 +1,4 @@
-# Borrador de anuncio (aún no publicado en comunidades)
+# Announcement draft (not posted to communities)
 
 **Show HN: APIPatch — find API consumers affected by an OpenAPI change and review a patch**
 
@@ -10,4 +10,4 @@ I would especially value reports of affected calls it missed, false positives, a
 
 ---
 
-Publicar solo después de verificar el enlace de instalación y poder responder comentarios. Este texto no afirma usuarios, ahorro de tiempo ni precisión que todavía no se han medido.
+Post only after checking the installation link and being ready to respond to comments. This draft makes no claim about users, time savings, or accuracy that has not been measured.

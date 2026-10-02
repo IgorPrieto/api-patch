@@ -1,9 +1,11 @@
-# Contribuir a APIPatch
+# Contributing to APIPatch
 
-Prueba primero la [beta pública](docs/PUBLIC_BETA.md) y consulta la [matriz](docs/COMPATIBILITY.md). Un hallazgo pendiente dentro de la matriz no debe presentarse como reparación automática.
+[English](CONTRIBUTING.md) · [Español](CONTRIBUTING.es.md)
 
-Para desarrollar: Node.js 24 o superior, `npm ci`, `npm run check` y `node dist/cli/main.js demo --verify-level4`. Si tienes Chrome o Chromium, la suite incluye el recorrido e2e del panel; si no, ese caso se omite y debes indicarlo al informar tus resultados.
+Start with the [public beta guide](docs/PUBLIC_BETA.md) and [compatibility matrix](docs/COMPATIBILITY.en.md). A finding that remains pending within the declared matrix must not be presented as an automatic repair.
 
-Abre un issue con una reproducción mínima y sintética antes de proponer un cambio amplio. Los PR deben explicar el patrón soportado, la evidencia AST/OpenAPI que justifica la clasificación, los casos que quedan sin resolver y las pruebas ejecutadas. No incluyas credenciales, código privado ni informes de clientes sin autorización. Para vulnerabilidades sigue [SECURITY.md](SECURITY.md).
+To develop: use Node.js 24 or later, run npm ci, npm run check, and node dist/cli/main.js demo --verify-level4. The test suite includes a browser walkthrough when Chrome or Chromium is installed; if it is absent, that test is skipped and you should say so when reporting results.
 
-El código se distribuye bajo [MIT](LICENSE). Al contribuir aceptas que tu contribución se distribuya bajo esa licencia.
+Open an issue with a minimal synthetic reproduction before proposing a broad change. A PR should explain the supported pattern, the AST/OpenAPI evidence behind it, cases that remain unresolved, and the checks run. Do not include credentials, private code, or customer reports without permission. For vulnerabilities, follow [SECURITY.md](SECURITY.md).
+
+The code is distributed under [MIT](LICENSE). By contributing, you agree that your contribution will be distributed under that license.
