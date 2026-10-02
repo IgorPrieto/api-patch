@@ -77,7 +77,7 @@ describe('scan method and URL properties', () => {
 
   it.each([
     ['unresolved shorthand', `const method = pick();\nfetch(${u}, {method});`],
-    ['let shorthand', `let method = 'DELETE';\nfetch(${u}, {method});`],
+    ['reassigned let shorthand', `let method = 'DELETE';\nmethod = pick();\nfetch(${u}, {method});`],
     ['unknown computed key', `fetch(${u}, {[key]: 'DELETE'});`],
     ['method member', `fetch(${u}, {method() { return 'DELETE'; }});`],
     ['getter', `fetch(${u}, {get method() { return 'DELETE'; }});`],

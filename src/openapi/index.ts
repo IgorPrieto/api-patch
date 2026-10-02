@@ -11,6 +11,8 @@ const METHODS: HttpMethod[] = ['get', 'put', 'post', 'delete', 'options', 'head'
 const MIN_EXPANSION_BUDGET = 100_000;
 const EXPANSION_FACTOR = 16;
 const MAX_EXPANSION_BUDGET = 1_000_000;
+/** Annotation added to a schema expanded from a recursion target: `[{ key, refs }]` (target key and the `$ref` texts that point back to it). */
+export const RECURSION_ANCHOR = 'x-apipatch-recursion-anchor';
 const REF_ANNOTATIONS = new Set(['summary', 'description']);
 type Obj = Record<string, unknown>;
 type Reference = ApiSnapshot['references'][number];
@@ -52,6 +54,8 @@ class Loader {
   private version = '';
   private sourceNodes = 0;
   private expandedNodes = 0;
+  /** Reference texts that closed a schema cycle, per target key; their targets get a `RECURSION_ANCHOR` annotation. */
+  private readonly recursionRefs = new Map<string, Set<string>>();
   constructor(private readonly options: LoadApiOptions) {
     this.limits = { ...DEFAULT_LIMITS, ...options.limits };
     for (const [name, value] of Object.entries(this.limits)) if (!Number.isSafeInteger(value) || value <= 0) throw new ApiLoadError('INVALID_LIMIT', { file: '', pointer: '' }, `${name} must be a positive integer`);
@@ -174,7 +178,13 @@ class Loader {
       if (target.recursive) {
         if (kind === 'object') fail('CYCLIC_REF', refAt, 'cyclic non-schema reference');
         this.diagnostics.push({ code: 'RECURSIVE_SCHEMA', severity: 'warning', message: 'Recursive schema reference is retained for review', source: refAt });
-        return { value: { $ref: current.$ref }, source, stack, recursive: true };
+        const refs = this.recursionRefs.get(target.key) ?? new Set<string>();
+        refs.add(current.$ref as string); this.recursionRefs.set(target.key, refs);
+        const retained: JsonObject = { $ref: current.$ref as string };
+        const siblings = Object.fromEntries(Object.entries(current).filter(([key]) => key !== '$ref'));
+        // 3.1 applies $ref siblings by conjunction; keep them instead of silently dropping them.
+        if (this.version.startsWith('3.1.') && Object.keys(siblings).length) return { value: { allOf: [retained, await this.normalizeSchema(siblings, source, stack)] }, source, stack, recursive: true };
+        return { value: retained, source, stack, recursive: true };
       }
       if (kind === 'schema' && Object.keys(current).length > 1) {
         const siblings = Object.fromEntries(Object.entries(current).filter(([key]) => key !== '$ref'));
@@ -218,6 +228,9 @@ class Loader {
         put(output, key, await Promise.all(item.map((member, i) => this.normalizeSchema(member, child(itemAt, i), resolved.stack, depth + 1))));
       } else put(output, key, item as JsonValue);
     }
+    // Lets the comparator resolve retained recursive `$ref`s to the enclosing expansion of their target.
+    const anchors = resolved.stack.slice(stack.length).filter(key => this.recursionRefs.has(key)).map(key => ({ key, refs: [...this.recursionRefs.get(key)!].sort() }));
+    if (anchors.length && output[RECURSION_ANCHOR] === undefined) put(output, RECURSION_ANCHOR, anchors);
     return output;
   }
   private async content(value: unknown, at: SourceLocation, stack: string[]): Promise<ApiMediaType[]> {

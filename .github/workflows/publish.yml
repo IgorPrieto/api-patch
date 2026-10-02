@@ -1,0 +1,62 @@
+name: Publish to npm
+
+# Runs only when a GitHub release is published, or manually. Manual runs default to a dry run.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Pack and simulate the publish without uploading
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write # npm trusted publishing (OIDC) and provenance
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - run: npm ci
+      - name: Find Chrome for the panel e2e tests
+        shell: bash
+        run: |
+          chrome="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
+          test -n "$chrome"
+          echo "APIPATCH_CHROME=$chrome" >> "$GITHUB_ENV"
+      - run: npm run check
+      - name: Check that the release tag matches package.json
+        if: github.event_name == 'release'
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          test "${GITHUB_REF_NAME}" = "v${version}" || { echo "Tag ${GITHUB_REF_NAME} does not match v${version}"; exit 1; }
+      - name: Choose the dist-tag
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          case "$version" in *-*) tag=beta ;; *) tag=latest ;; esac
+          echo "NPM_DIST_TAG=$tag" >> "$GITHUB_ENV"
+      - run: npm pack --dry-run
+      - name: Publish
+        shell: bash
+        env:
+          # Optional fallback; unused when trusted publishing is configured on npmjs.com.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          args=(--provenance --access public --tag "$NPM_DIST_TAG")
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then args+=(--dry-run); fi
+          npm publish "${args[@]}"

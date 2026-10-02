@@ -23,11 +23,15 @@ export interface ApiSnapshot extends Versioned { id: string; openapi: string; di
 export interface ApiChange { id: string; operationId: string; method: HttpMethod; path: string; location: ChangeLocation; rule: string; direction: 'request' | 'response' | 'operation' | 'security'; classification: 'breaking' | 'compatible' | 'ambiguous'; explanation: string; before?: SourceLocation; after?: SourceLocation; oldValue?: JsonValue; newValue?: JsonValue; /** Property path inside a comparable schema; empty means the root. Omitted means no reliable path. */ fieldPath?: string[]; evidence: Evidence[] }
 /** Bindings identify exact source spans supported by the scanner, never speculative edits. */
 export interface ConsumerBinding { kind: 'url' | 'query' | 'request-property' | 'response-property'; name: string; range: CodeRange; value?: JsonValue }
-export interface ConsumerUse { id: string; file: string; fileHash: string; range: CodeRange; client: 'fetch' | 'axios'; urlExpression: string; url?: string; method?: HttpMethod; origin?: string; operationIds: string[]; bindings: ConsumerBinding[]; resolution: 'resolved' | 'partial' | 'unresolved'; confidence: Confidence; reason: string }
+/** Declaration of a repository-local wrapper (same file or one relative import hop) through which the HTTP call is made. `ConsumerUse.range` is then the wrapper call site; `file` is relative to the repository. */
+export interface WrapperReference { name: string; file: string; range: CodeRange }
+export interface ConsumerUse { id: string; file: string; fileHash: string; range: CodeRange; client: 'fetch' | 'axios'; urlExpression: string; url?: string; method?: HttpMethod; origin?: string; operationIds: string[]; bindings: ConsumerBinding[]; resolution: 'resolved' | 'partial' | 'unresolved'; confidence: Confidence; reason: string; via?: WrapperReference }
 export interface Finding { id: string; changeId: string; useId: string; consequence: string; evidence: Evidence[]; confidence: Confidence; reviewStatus: ReviewStatus }
 export interface OperationMapping { from: string; to: string }
-export interface RenameMapping { operationId: string; location: 'query' | 'request' | 'response'; from: string; to: string }
-export interface RequiredValueMapping { operationId: string; location: 'query' | 'request'; name: string; value: JsonValue }
+/** `parent` is the property path of the object that contains the renamed key (request/response only); omitted or empty means top level. Only the leaf key changes. */
+export interface RenameMapping { operationId: string; location: 'query' | 'request' | 'response'; from: string; to: string; parent?: string[] }
+/** `parent` is the property path of the request object that receives `name` (request only); omitted or empty means top level. */
+export interface RequiredValueMapping { operationId: string; location: 'query' | 'request'; name: string; value: JsonValue; parent?: string[] }
 export interface MigrationConfig extends Versioned { allowedOrigins: string[]; operations: OperationMapping[]; renames: RenameMapping[]; values: RequiredValueMapping[] }
 export interface TextEdit { start: number; end: number; oldText: string; newText: string; findingIds: string[]; reason: string }
 export interface FilePatch { file: string; originalHash: string; edits: TextEdit[] }

@@ -4,13 +4,17 @@
 
 APIPatch compares two OpenAPI definitions, locates affected JavaScript/TypeScript HTTP calls, and prepares reviewable code patches. It runs locally without an account, model API, or paid service. Repairs require explicit migration mappings; ambiguous changes remain pending.
 
-**Public beta 0.1.0-beta.3.** Install from the [GitHub release](https://github.com/IgorPrieto/api-patch/releases/tag/v0.1.0-beta.3) with Node.js 24 or later:
+**Public beta 0.1.0-beta.4.** Install from npm with Node.js 24 or later:
 
-    curl -fL -o apipatch-0.1.0-beta.3.tgz https://github.com/IgorPrieto/api-patch/releases/download/v0.1.0-beta.3/apipatch-0.1.0-beta.3.tgz
-    npm install -g ./apipatch-0.1.0-beta.3.tgz
+    npm install -g apipatch@beta
     apipatch demo --verify-level4
 
-The release includes SHA256SUMS.txt so you can verify the download. The package is not yet published to the npm registry. APIPatch does not upload repository code or send telemetry. See the [public beta testing guide](docs/PUBLIC_BETA.md) and [feedback forms](https://github.com/IgorPrieto/api-patch/issues/new/choose).
+Or download the tarball from the [GitHub release](https://github.com/IgorPrieto/api-patch/releases/tag/v0.1.0-beta.4):
+
+    curl -fL -o apipatch-0.1.0-beta.4.tgz https://github.com/IgorPrieto/api-patch/releases/download/v0.1.0-beta.4/apipatch-0.1.0-beta.4.tgz
+    npm install -g ./apipatch-0.1.0-beta.4.tgz
+
+The release includes SHA256SUMS.txt so you can verify the download. See the [release process](docs/RELEASING.md) for how npm versions are published. APIPatch does not upload repository code or send telemetry. See the [public beta testing guide](docs/PUBLIC_BETA.md) and [feedback forms](https://github.com/IgorPrieto/api-patch/issues/new/choose).
 
 ## Install from source
 
