@@ -2,11 +2,11 @@
 
 [English](PUBLIC_BETA.md) · [Español](PUBLIC_BETA.es.md)
 
-APIPatch 0.1.0-beta.3 funciona en tu equipo. Buscamos comprobar si identifica usos afectados y produce reparaciones que un mantenedor aceptaría. No hay telemetría automática, cuenta ni envío de código a APIPatch.
+APIPatch 0.1.0-beta.4 funciona en tu equipo. Buscamos comprobar si identifica usos afectados y produce reparaciones que un mantenedor aceptaría. No hay telemetría automática, cuenta ni envío de código a APIPatch.
 
 ## Prueba de 15–30 minutos
 
-1. Instala la beta desde la [release](https://github.com/IgorPrieto/api-patch/releases/tag/v0.1.0-beta.3) siguiendo el [README](../README.es.md). Ejecuta `apipatch --lang es demo --verify-level4` para conocer qué significa cada estado.
+1. Instala la beta desde la [release](https://github.com/IgorPrieto/api-patch/releases/tag/v0.1.0-beta.4) siguiendo el [README](../README.es.md). Ejecuta `apipatch --lang es demo --verify-level4` para conocer qué significa cada estado.
 2. Elige dos versiones OpenAPI 3.0/3.1 y una **copia o rama** de un consumidor JavaScript/TypeScript que use `fetch` o `axios`. Ejecuta `compare` y `scan` según el README; el análisis no ejecuta el repositorio.
 3. Revisa los hallazgos de confianza alta y los pendientes. Para cada cambio real, anota si APIPatch encontró todas las llamadas afectadas, inventó alguna o dejó sin resolver un patrón que esperabas que cubriera.
 4. Si conoces una equivalencia de migración, configúrala y genera la vista previa con `repair`. Revisa el diff. Aplica solo en la copia o rama que controlas y ejecuta pruebas del repositorio únicamente si lo autorizas expresamente.

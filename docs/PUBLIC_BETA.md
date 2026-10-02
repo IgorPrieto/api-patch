@@ -6,7 +6,7 @@ APIPatch runs on your computer. We want to learn whether it finds affected consu
 
 ## A 15–30 minute test
 
-1. Install the [beta release](https://github.com/IgorPrieto/api-patch/releases/tag/v0.1.0-beta.3) using the [README](../README.md). Run apipatch demo --verify-level4 to see what the verification states mean.
+1. Install the [beta release](https://github.com/IgorPrieto/api-patch/releases/tag/v0.1.0-beta.4) using the [README](../README.md). Run apipatch demo --verify-level4 to see what the verification states mean.
 2. Choose two OpenAPI 3.0/3.1 versions and a **copy or working branch** of a JavaScript/TypeScript consumer using fetch or axios. Run compare and scan as shown in the README. Analysis does not execute the consumer.
 3. Review high-confidence findings and pending cases. For each real change, record whether APIPatch found all affected calls, reported an unrelated call, or could not resolve a pattern you expected it to support.
 4. If you know a confirmed migration mapping, configure it and generate a preview with repair. Review the diff. Apply only to the copy or branch you control; authorize repository tests only if you trust the command.
