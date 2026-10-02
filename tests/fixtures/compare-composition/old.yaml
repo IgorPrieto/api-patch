@@ -1,0 +1,27 @@
+openapi: 3.1.0
+info: { title: Composition fixture, version: '1' }
+paths:
+  /tree:
+    get:
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Node' }
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Node' }
+      responses:
+        '204': { description: Created }
+components:
+  schemas:
+    Node:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        next: { $ref: '#/components/schemas/Node' }

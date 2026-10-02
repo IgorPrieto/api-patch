@@ -6,12 +6,12 @@ export { MAX_SCHEMA_DEPTH } from './schema.js';
 
 /** Known limits of `compareApis`; callers should surface them next to the changes. */
 export const COMPARE_LIMITATIONS: readonly string[] = Object.freeze([
-  'Schema comparison covers a documented subset of JSON Schema; composition (allOf/anyOf/oneOf/not/if-then-else/discriminator) and uninterpreted keywords are reported as ambiguous when they change, never as safe.',
+  'Schema comparison covers a documented subset of JSON Schema; object-like allOf branches are merged and anyOf branch additions/removals are classified by direction, while other composition changes (oneOf, not, if-then-else, discriminator, non-mergeable allOf) and uninterpreted keywords are reported as ambiguous, never as safe.',
   'Operations are matched by HTTP method and path template; renamed operations, parameters and properties are reported as removal plus addition and never inferred from similar names.',
   'Security compares effective requirement names and scopes only; security scheme definitions (type, location, flows) are not part of the snapshot and are not compared.',
   'Parameter style/explode, encoding, response headers, links and callbacks are not part of the snapshot and are not compared.',
   'Evidence pointers inside schemas are relative to the normalized (dereferenced) schema; source locations point to the enclosing parameter, media type, response or operation.',
-  'Recursive schema back-references are compared by reference text only.',
+  'Recursive schema references are compared structurally against their enclosing expansion with cycle detection; a reference that cannot be resolved is reported as ambiguous.',
   'OpenAPI 3.0 nullable and boolean exclusiveMinimum/exclusiveMaximum are normalized against 3.1 type unions and numeric bounds; other dialect differences (for example nullable inside a 3.1 document) are treated as uninterpreted keywords.',
   'Several media type keys that collapse after removing parameters are reported as ambiguous instead of silently selecting one schema.',
 ]);

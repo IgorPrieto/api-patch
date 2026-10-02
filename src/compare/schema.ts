@@ -107,8 +107,101 @@ function additionalKind(value: JsonValue | undefined): AdditionalKind {
   return 'schema';
 }
 
+/**
+ * Exact merge of object-like allOf branches: every branch only uses type object, properties, required and
+ * additionalProperties; a property defined twice must be identical; at most one branch restricts additional
+ * properties, and then every other branch's properties must be declared by it. Otherwise undefined.
+ */
+function mergeObjects(branches: Schema[], version: string): Schema | undefined {
+  const properties: Schema = {};
+  const required = new Set<string>();
+  let typed = false, restricted: Schema | undefined;
+  for (const branch of branches) {
+    for (const key of Object.keys(branch)) if (!isAnnotation(key) && !OBJECT_KEYWORDS.has(key) && !(key === 'nullable' && branch.nullable === false && version.startsWith('3.0.'))) return undefined;
+    const types = typeSet(branch, version);
+    if (branch.type !== undefined && !(types && types.size === 1 && types.has('object'))) return undefined;
+    typed ||= types !== undefined;
+    if (branch.properties !== undefined && !isObject(branch.properties)) return undefined;
+    if (branch.required !== undefined && !(Array.isArray(branch.required) && branch.required.every(item => typeof item === 'string'))) return undefined;
+    for (const [name, schema] of Object.entries(isObject(branch.properties) ? branch.properties : {})) {
+      if (Object.hasOwn(properties, name) && !same(properties[name], schema)) return undefined;
+      Object.defineProperty(properties, name, { value: schema, writable: true, enumerable: true, configurable: true });
+    }
+    for (const name of (branch.required as string[] | undefined) ?? []) required.add(name);
+    if (additionalKind(branch.additionalProperties) !== 'open') { if (restricted) return undefined; restricted = branch; }
+  }
+  if (restricted) {
+    const declared = isObject(restricted.properties) ? restricted.properties : {};
+    if (Object.keys(properties).some(name => !Object.hasOwn(declared, name))) return undefined;
+  }
+  return {
+    ...(typed ? { type: 'object' } : {}),
+    ...(Object.keys(properties).length ? { properties } : {}),
+    ...(required.size ? { required: [...required].sort() } : {}),
+    ...(restricted ? { additionalProperties: restricted.additionalProperties! } : {}),
+  };
+}
+
+/** Mirrors `RECURSION_ANCHOR` in `src/openapi`: `[{ key, refs }]` on the expansion of a recursion target. */
+const ANCHOR = 'x-apipatch-recursion-anchor';
+const OBJECT_KEYWORDS = new Set(['type', 'properties', 'required', 'additionalProperties']);
+type Side = 'old' | 'new';
+interface Anchor { key: string; refs: string[] }
+interface Frame { anchors: Anchor[]; schema: JsonValue }
+interface Resolved { schema: JsonValue | undefined; id?: string; unresolved?: string }
+
+function anchorsOf(value: JsonValue | undefined): Anchor[] {
+  const raw = isObject(value) ? value[ANCHOR] : undefined;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((item): item is Schema => isObject(item) && typeof item.key === 'string' && Array.isArray(item.refs))
+    .map(item => ({ key: item.key as string, refs: (item.refs as JsonValue[]).filter((ref): ref is string => typeof ref === 'string') }));
+}
+const refOf = (value: JsonValue | undefined): string | undefined => isObject(value) && typeof value.$ref === 'string' && Object.keys(value).every(key => key === '$ref' || isAnnotation(key)) ? value.$ref : undefined;
+const refCache = new WeakMap<object, boolean>();
+function mentionsRef(value: JsonValue | undefined): boolean {
+  if (value === null || typeof value !== 'object') return false;
+  let known = refCache.get(value);
+  if (known === undefined) { known = Array.isArray(value) ? value.some(mentionsRef) : Object.hasOwn(value, '$ref') || Object.values(value).some(mentionsRef); refCache.set(value, known); }
+  return known;
+}
+/** 3.1 `$ref` + annotation siblings arrive as an annotation-only allOf; expose the bare reference so it can be resolved. */
+function bareRef(value: JsonValue | undefined): JsonValue | undefined {
+  if (!isObject(value) || !Array.isArray(value.allOf)) return value;
+  const prepared = prepare(value);
+  return refOf(prepared) !== undefined ? prepared : value;
+}
+
 class Walker {
+  /** Coinductive hypothesis: (old target, new target, direction, composed) pairs already being or already compared. */
+  private readonly visited = new Set<string>();
+  private readonly frames: Record<Side, Frame[]> = { old: [], new: [] };
   constructor(private readonly ctx: SchemaContext) {}
+
+  /**
+   * A retained recursive `$ref` points back to an enclosing expansion of its target, which the loader marks with an
+   * anchor listing the reference texts. The nearest enclosing frame wins; frames with different keys claiming the
+   * same text make the reference unresolvable.
+   */
+  private resolve(value: JsonValue | undefined, side: Side): Resolved {
+    const ref = refOf(value);
+    if (ref === undefined) { const anchors = anchorsOf(value); return { schema: value, ...(anchors.length ? { id: anchors.map(a => a.key).sort().join('\n') } : {}) }; }
+    const frames = this.frames[side];
+    const keys = new Set<string>();
+    let target: Frame | undefined;
+    for (let i = frames.length - 1; i >= 0; i--) {
+      const matching = frames[i]!.anchors.filter(anchor => anchor.refs.includes(ref));
+      if (!matching.length) continue;
+      target ??= frames[i];
+      for (const anchor of matching) keys.add(anchor.key);
+    }
+    if (!target || keys.size !== 1) return { schema: value, unresolved: ref };
+    return { schema: target.schema, id: [...keys][0]! };
+  }
+  private push(side: Side, value: JsonValue | undefined): number {
+    const anchors = anchorsOf(value);
+    if (anchors.length) this.frames[side].push({ anchors, schema: value! });
+    return anchors.length ? 1 : 0;
+  }
 
   private subject(field: string): string { return field === this.ctx.root ? `the ${this.ctx.scope} schema` : `"${field}" in ${this.ctx.scope}`; }
 
@@ -131,16 +224,94 @@ class Walker {
     this.emit(rule, classification, `${what} for ${this.subject(subjectField)}: ${consequence}.`, pointer, field, oldValue, newValue);
   }
 
-  compare(oldRaw: JsonValue | undefined, newRaw: JsonValue | undefined, pointer: string, field: string, composed: boolean, depth: number): void {
-    if (same(oldRaw, newRaw)) return;
+  compare(oldInput: JsonValue | undefined, newInput: JsonValue | undefined, pointer: string, field: string, composed: boolean, depth: number): void {
+    // Identical text proves nothing when it contains recursive references: their targets may differ.
+    if (same(oldInput, newInput) && !mentionsRef(oldInput)) return;
     if (depth > MAX_SCHEMA_DEPTH) { this.emit('schema.depth-limit', 'ambiguous', `Schema nesting for ${this.subject(field)} exceeds ${MAX_SCHEMA_DEPTH} levels; differences below are not analysed.`, pointer, field); return; }
-    const before = prepare(oldRaw), after = prepare(newRaw);
-    if (same(before, after)) return;
+    const oldResolved = this.resolve(bareRef(oldInput), 'old'), newResolved = this.resolve(bareRef(newInput), 'new');
+    if (oldResolved.unresolved !== undefined || newResolved.unresolved !== undefined) {
+      if (same(oldInput, newInput)) {
+        this.emit('schema.recursion.unresolved', 'ambiguous', `Recursive reference ${oldResolved.unresolved ?? newResolved.unresolved} for ${this.subject(field)} cannot be resolved to its enclosing schema, so an unchanged reference does not prove an unchanged target.`, pointer, field, oldInput ?? null, newInput ?? null);
+        return;
+      }
+    }
+    if (oldResolved.id !== undefined && newResolved.id !== undefined) {
+      const pair = JSON.stringify([oldResolved.id, newResolved.id, this.ctx.direction, composed]);
+      if (this.visited.has(pair)) return;
+      this.visited.add(pair);
+    }
+    const oldRaw = oldResolved.schema, newRaw = newResolved.schema;
+    const pushedOld = this.push('old', oldRaw), pushedNew = this.push('new', newRaw);
+    try { this.compareResolved(oldRaw, newRaw, pointer, field, composed, depth); }
+    finally { this.frames.old.length -= pushedOld; this.frames.new.length -= pushedNew; }
+  }
+
+  private compareResolved(oldRaw: JsonValue | undefined, newRaw: JsonValue | undefined, pointer: string, field: string, composed: boolean, depth: number): void {
+    let before = prepare(oldRaw), after = prepare(newRaw);
+    if (same(before, after) && !mentionsRef(before)) return;
+    const merged = this.mergeBoth(before, after);
+    if (merged) {
+      const { pushed } = merged; before = merged.before; after = merged.after;
+      try { this.compareSchema(before, after, pointer, field, composed, depth); }
+      finally { this.frames.old.length -= pushed.old; this.frames.new.length -= pushed.new; }
+      return;
+    }
+    this.compareSchema(before, after, pointer, field, composed, depth);
+  }
+
+  /**
+   * Replaces object-like `allOf`s by their exact merge (property union, required union) so changes inside get precise
+   * rules. Returns undefined when neither side merges or a side with `allOf` cannot be merged exactly.
+   */
+  private mergeBoth(before: Schema, after: Schema): { before: Schema; after: Schema; pushed: Record<Side, number> } | undefined {
+    if (!Array.isArray(before.allOf) && !Array.isArray(after.allOf)) return undefined;
+    const pushed = { old: 0, new: 0 };
+    const mergeSide = (schema: Schema, side: Side): Schema | undefined => {
+      if (!Array.isArray(schema.allOf)) return schema;
+      const branches: Schema[] = [];
+      if (!this.flatten(schema, side, branches, pushed, 0)) return undefined;
+      return mergeObjects(branches, side === 'old' ? this.ctx.oldVersion : this.ctx.newVersion);
+    };
+    const mergedBefore = mergeSide(before, 'old');
+    const mergedAfter = mergedBefore ? mergeSide(after, 'new') : undefined;
+    if (!mergedBefore || !mergedAfter) { this.frames.old.length -= pushed.old; this.frames.new.length -= pushed.new; return undefined; }
+    return { before: mergedBefore, after: mergedAfter, pushed };
+  }
+  private flatten(schema: Schema, side: Side, out: Schema[], pushed: Record<Side, number>, level: number): boolean {
+    if (level > 8) return false;
+    const { allOf, ...rest } = schema;
+    if (allOf === undefined) { out.push(schema); return true; }
+    if (!Array.isArray(allOf)) return false;
+    out.push(rest);
+    for (const member of allOf) {
+      const resolved = this.resolve(member, side);
+      if (resolved.unresolved !== undefined) return false;
+      // Recursive references inside a branch resolve against the branch itself, not the merged object.
+      pushed[side] += this.push(side, resolved.schema);
+      const prepared = prepare(resolved.schema);
+      if (prepared.$apipatchInvalidSchema !== undefined || !this.flatten(prepared, side, out, pushed, level + 1)) return false;
+    }
+    return true;
+  }
+
+  private compareSchema(before: Schema, after: Schema, pointer: string, field: string, composed: boolean, depth: number): void {
+    if (same(before, after) && !mentionsRef(before)) return;
 
     const opaqueBefore = opaque(before, this.ctx.oldVersion), opaqueAfter = opaque(after, this.ctx.newVersion);
     const opaqueKeys = [...new Set([...Object.keys(opaqueBefore), ...Object.keys(opaqueAfter)])].sort();
-    if (!same(opaqueBefore, opaqueAfter)) {
-      const changed = opaqueKeys.filter(key => !same(opaqueBefore[key], opaqueAfter[key]));
+    if (!same(opaqueBefore, opaqueAfter) || (mentionsRef(opaqueBefore.anyOf) && Array.isArray(opaqueAfter.anyOf))) {
+      const changed = opaqueKeys.filter(key => !same(opaqueBefore[key], opaqueAfter[key]) || (key === 'anyOf' && mentionsRef(opaqueBefore[key])));
+      if (changed.length === 1 && changed[0] === 'anyOf' && this.anyOf(before, after, pointer, field, composed, depth)) {
+        // The remaining keywords combine with anyOf by conjunction.
+        if (opaqueKeys.some(key => SIBLING_DEPENDENT.has(key)) || !opaqueKeys.every(key => COMPOSITION.has(key))) {
+          const { anyOf: _a, ...restBefore } = before, { anyOf: _b, ...restAfter } = after;
+          if (!same(restBefore, restAfter)) this.emit('schema.keyword.unsupported', 'ambiguous', `Schema for ${this.subject(field)} changed next to keywords APIPatch does not interpret (${opaqueKeys.join(', ')}); compatibility is not provable.`, pointer, field, before, after);
+          return;
+        }
+        composed = true;
+        this.siblings(before, after, pointer, field, composed, depth);
+        return;
+      }
       const composition = changed.some(key => COMPOSITION.has(key));
       this.emit(composition ? 'schema.composition.changed' : 'schema.keyword.unsupported', 'ambiguous',
         `${composition ? 'Composition keywords' : 'Keywords not interpreted by APIPatch'} changed for ${this.subject(field)} (${changed.join(', ')}); compatibility is not provable and requires manual review.`,
@@ -154,12 +325,40 @@ class Walker {
       }
       composed = true;
     }
+    this.siblings(before, after, pointer, field, composed, depth);
+  }
 
+  private siblings(before: Schema, after: Schema, pointer: string, field: string, composed: boolean, depth: number): void {
     if (!this.types(before, after, pointer, field, composed)) return;
     this.enums(before, after, pointer, field, composed);
     this.constraints(before, after, pointer, field, composed);
     this.object(before, after, pointer, field, composed, depth);
     this.items(before, after, pointer, field, composed, depth);
+  }
+
+  /**
+   * anyOf is a union: moving every branch in the safe direction moves the union in the safe direction, but a
+   * breaking move of one branch may be covered by another, so branch-level breaks are reported as composed
+   * (ambiguous). Returns false when the change is not one of the provable shapes.
+   */
+  private anyOf(before: Schema, after: Schema, pointer: string, field: string, composed: boolean, depth: number): boolean {
+    const oldBranches = before.anyOf, newBranches = after.anyOf;
+    if (!Array.isArray(oldBranches) || !Array.isArray(newBranches) || !oldBranches.length || !newBranches.length) return false;
+    const at = `${pointer}/anyOf`;
+    if (oldBranches.length === newBranches.length) {
+      oldBranches.forEach((branch, i) => this.compare(branch, newBranches[i], `${at}/${i}`, field, true, depth + 1));
+      return true;
+    }
+    // Branch addition/removal needs the surviving branches to be unchanged without recursive references.
+    if ([...oldBranches, ...newBranches].some(branch => mentionsRef(branch))) return false;
+    const key = (items: JsonValue[]) => items.map(item => canonicalJson(item));
+    const oldKeys = key(oldBranches), newKeys = key(newBranches);
+    const added = newBranches.filter((_, i) => !oldKeys.includes(newKeys[i]!)), removed = oldBranches.filter((_, i) => !newKeys.includes(oldKeys[i]!));
+    if (added.length && removed.length) return false;
+    if (added.length) this.change('schema.any-of.branch-added', 'widen', `${added.length} anyOf branch${added.length > 1 ? 'es were' : ' was'} added`, at, field, composed, oldBranches, newBranches);
+    else if (removed.length) this.change('schema.any-of.branch-removed', 'narrow', `${removed.length} anyOf branch${removed.length > 1 ? 'es were' : ' was'} removed`, at, field, composed, oldBranches, newBranches);
+    else return false;
+    return true;
   }
 
   /** Returns false when the types are disjointly changed and deeper comparison would only add noise. */
