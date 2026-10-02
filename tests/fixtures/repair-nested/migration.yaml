@@ -1,0 +1,14 @@
+# Synthetic fixture. Operation ids are ApiOperation.id values (stableId of method + route):
+#   operation_031fd8d8dea26acf7f99e12a = POST /orders, operation_1d09c8ed3cc726ddd94158e6 = GET /profiles/{id} (both snapshots)
+#   operation_f9f1c1d9cf6631c039456ba3 = GET /accounts/{id} (old) moved to operation_11e15e36673d37e1f1290b38 = GET /people/{id} (new)
+schemaVersion: '1.0'
+allowedOrigins: []
+operations:
+  - { from: operation_f9f1c1d9cf6631c039456ba3, to: operation_11e15e36673d37e1f1290b38 }
+renames:
+  - { operationId: operation_031fd8d8dea26acf7f99e12a, location: request, parent: [shipping, address], from: city, to: town }
+  - { operationId: operation_1d09c8ed3cc726ddd94158e6, location: response, from: fullName, to: displayName }
+  - { operationId: operation_1d09c8ed3cc726ddd94158e6, location: response, parent: [address], from: city, to: town }
+  - { operationId: operation_11e15e36673d37e1f1290b38, location: response, parent: [address], from: city, to: town }
+values:
+  - { operationId: operation_031fd8d8dea26acf7f99e12a, location: request, parent: [shipping, address], name: country, value: ES }

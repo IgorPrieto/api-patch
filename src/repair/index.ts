@@ -735,6 +735,41 @@ function requiredNames(schema: JsonValue | undefined, depth = 0): Set<string> | 
 
 const sameSchema = (a: JsonValue | null | undefined, b: JsonValue | null | undefined) => a != null && b != null && JSON.stringify(a) === JSON.stringify(b);
 
+/** JSON with sorted object keys and sorted `required` lists: order is not meaningful in either. */
+function canonical(value: JsonValue | undefined, key?: string): string {
+  if (Array.isArray(value)) {
+    const items = value.map(item => canonical(item));
+    return `[${(key === 'required' ? items.sort() : items).join(',')}]`;
+  }
+  if (value && typeof value === 'object') return `{${Object.keys(value).sort().map(name => `${JSON.stringify(name)}:${canonical(value[name], name)}`).join(',')}}`;
+  return JSON.stringify(value ?? null);
+}
+
+/**
+ * The source schema of top-level field `name` with the applied nested renames under it replayed. Only plain
+ * `properties` paths are rewritten; anything else returns undefined (not demonstrated).
+ */
+function replayNestedRenames(schema: JsonValue, renames: MappingOutcome[]): JsonValue | undefined {
+  const copy = structuredClone(schema);
+  for (const outcome of renames) {
+    let node: JsonValue = copy;
+    for (const segment of outcome.parent!.slice(1)) {
+      if (!node || typeof node !== 'object' || Array.isArray(node) || typeof strictObjectProperties(node, new Set()) === 'string' || Object.hasOwn(node, 'allOf')) return undefined;
+      const properties = node.properties as Record<string, JsonValue> | undefined;
+      if (!properties || !Object.hasOwn(properties, segment)) return undefined;
+      node = properties[segment]!;
+    }
+    if (!node || typeof node !== 'object' || Array.isArray(node) || typeof strictObjectProperties(node, new Set()) === 'string' || Object.hasOwn(node, 'allOf')) return undefined;
+    const properties = node.properties as Record<string, JsonValue> | undefined;
+    const [from, to] = outcome.names as [string, string];
+    if (!properties || !Object.hasOwn(properties, from) || Object.hasOwn(properties, to)) return undefined;
+    properties[to] = properties[from]!;
+    delete properties[from];
+    if (Array.isArray(node.required)) node.required = node.required.map(item => item === from ? to : item);
+  }
+  return copy;
+}
+
 /**
  * Obligations a moved operation imposes on the call, checked only against explicit mappings and the two
  * snapshots (never by name similarity). Returns the obligations that are not demonstrated.
@@ -742,12 +777,21 @@ const sameSchema = (a: JsonValue | null | undefined, b: JsonValue | null | undef
 function unmetMoveObligations(source: ApiOperation, target: ApiOperation, outcomes: MappingOutcome[]): string[] {
   const unmet: string[] = [];
   const done = (location: Location, pick: (outcome: MappingOutcome) => boolean, allowAbsent = false) =>
-    outcomes.find(outcome => outcome.kind !== 'operation' && outcome.location === location && pick(outcome) && (outcome.status === 'applied' || (allowAbsent && outcome.status === 'absent')) && !outcome.caveat);
+    outcomes.find(outcome => outcome.kind !== 'operation' && outcome.location === location && !outcome.parent?.length && pick(outcome) && (outcome.status === 'applied' || (allowAbsent && outcome.status === 'absent')) && !outcome.caveat);
+  // A top-level field whose schema changed only by explicit nested renames (replayed on the source schema) is
+  // demonstrated; nested values and anything not reproducible from the snapshots stay undemonstrated.
+  const nestedExplains = (location: Location, name: string, before: JsonValue, after: JsonValue | null | undefined, allowAbsent: boolean) => {
+    if (after === null || after === undefined) return false;
+    const renames = outcomes.filter(outcome => outcome.kind === 'rename' && outcome.location === location && outcome.parent?.[0] === name);
+    if (!renames.length || renames.some(outcome => !(outcome.status === 'applied' || (allowAbsent && outcome.status === 'absent')) || outcome.caveat)) return false;
+    const replayed = replayNestedRenames(before, renames);
+    return replayed !== undefined && canonical(replayed) === canonical(after);
+  };
   // A field the destination requires must either exist unchanged in the source or be produced by an applied mapping.
   const produced = (location: 'query' | 'request', name: string): string | undefined => {
     const before = fieldSchema(source, location, name);
     const after = fieldSchema(target, location, name);
-    if (before !== null && before !== undefined) return sameSchema(before, after) ? undefined : `${location} field ${name} has a different schema in the destination`;
+    if (before !== null && before !== undefined) return sameSchema(before, after) || (location === 'request' && nestedExplains(location, name, before, after, false)) ? undefined : `${location} field ${name} has a different schema in the destination`;
     const value = done(location, outcome => outcome.kind === 'value' && outcome.names[0] === name);
     if (value) return undefined;
     const rename = done(location, outcome => outcome.kind === 'rename' && outcome.names[1] === name);
@@ -777,7 +821,7 @@ function unmetMoveObligations(source: ApiOperation, target: ApiOperation, outcom
     if (!targetResponses.length || before.some(item => !item) || targetResponses.some(schema => !schemaProperties(schema))) unmet.push('success response schemas cannot be compared');
     else for (const [name, schema] of before.flatMap(item => [...item!])) {
       const after = fieldSchema(target, 'response', name);
-      if (after !== null) { if (!sameSchema(schema, after)) unmet.push(`response field ${name} has a different schema in the destination`); continue; }
+      if (after !== null) { if (!sameSchema(schema, after) && !nestedExplains('response', name, schema, after, true)) unmet.push(`response field ${name} has a different schema in the destination`); continue; }
       const rename = done('response', outcome => outcome.kind === 'rename' && outcome.names[0] === name, true);
       if (!rename) unmet.push(`response field ${name} is missing in the destination and no explicit mapping covers the call's reads of it`);
       else if (!sameSchema(schema, fieldSchema(target, 'response', rename.names[1]!))) unmet.push(`renamed response field ${name} → ${rename.names[1]} has a different schema`);
