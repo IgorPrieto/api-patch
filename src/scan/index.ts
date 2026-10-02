@@ -6,7 +6,7 @@ import {
   DEFAULT_LIMITS, SCHEMA_VERSION, sha256, stableId,
   type ApiChange, type ApiOperation, type CodeRange, type ConsumerBinding,
   type ConsumerUse, type Diagnostic, type Finding, type HttpMethod,
-  type ResourceLimits, type ScanOptions, type ScanResult,
+  type ResourceLimits, type ScanOptions, type ScanResult, type WrapperReference, type Confidence,
 } from '../contracts/index.js';
 
 const EXTENSIONS = new Set(['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.mts', '.cts']);
@@ -20,13 +20,17 @@ type Candidate = { path: string; origin?: string; operation: ApiOperation };
 type Property = { kind: 'absent' } | { kind: 'value'; node: ts.Expression } | { kind: 'unknown' };
 type Match = { operation: ApiOperation; originConfirmed: boolean };
 
-function range(source: ts.SourceFile, node: ts.Node): CodeRange {
+// Set once per source file before visiting it or analyzing wrapper declarations in it; lets evaluate()/
+// objectExpression() resolve a never-reassigned `let` the same way as a `const` (see collectResolvableLets).
+let resolvableLets = new Set<ts.Symbol>();
+
+export function range(source: ts.SourceFile, node: ts.Node): CodeRange {
   const start = node.getStart(source);
   const pos = source.getLineAndCharacterOfPosition(start);
   return { start, end: node.getEnd(), line: pos.line + 1, column: pos.character + 1 };
 }
 
-function literal(node: ts.Node): string | undefined {
+export function literal(node: ts.Node): string | undefined {
   return ts.isStringLiteralLike(node) ? node.text : undefined;
 }
 
@@ -45,9 +49,17 @@ function propertyKey(name: ts.PropertyName, checker: ts.TypeChecker): string | u
   return undefined;
 }
 
+// A declaration this static analysis may treat as immutable: an explicit `const`, or a module-local
+// `let` proven (collectResolvableLets) never reassigned, incremented, or exported anywhere in the file.
+function isResolvableDeclaration(declaration: ts.Declaration, symbol: ts.Symbol): declaration is ts.VariableDeclaration {
+  if (!ts.isVariableDeclaration(declaration) || !declaration.initializer) return false;
+  if (declaration.parent.flags & ts.NodeFlags.Const) return true;
+  return (declaration.parent.flags & ts.NodeFlags.Let) !== 0 && resolvableLets.has(symbol);
+}
+
 // Object literal semantics: the last definition wins; spreads, unresolved computed keys,
 // methods and accessors make the property unknown unless a later member defines it.
-function property(object: ts.ObjectLiteralExpression | undefined, name: string, checker: ts.TypeChecker, depth = 0): Property {
+export function property(object: ts.ObjectLiteralExpression | undefined, name: string, checker: ts.TypeChecker, depth = 0): Property {
   let result: Property = { kind: 'absent' };
   if (!object) return result;
   for (const member of object.properties) {
@@ -67,12 +79,12 @@ function property(object: ts.ObjectLiteralExpression | undefined, name: string, 
   return result;
 }
 
-function propertyValue(object: ts.ObjectLiteralExpression | undefined, name: string, checker: ts.TypeChecker): ts.Expression | undefined {
+export function propertyValue(object: ts.ObjectLiteralExpression | undefined, name: string, checker: ts.TypeChecker): ts.Expression | undefined {
   const found = property(object, name, checker);
   return found.kind === 'value' ? found.node : undefined;
 }
 
-function objectExpression(node: ts.Expression | undefined, checker: ts.TypeChecker, seen = new Set<ts.Symbol>()): ts.ObjectLiteralExpression | undefined {
+export function objectExpression(node: ts.Expression | undefined, checker: ts.TypeChecker, seen = new Set<ts.Symbol>()): ts.ObjectLiteralExpression | undefined {
   if (!node) return undefined;
   if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isSatisfiesExpression(node)) return objectExpression(node.expression, checker, seen);
   if (ts.isObjectLiteralExpression(node)) return node;
@@ -81,14 +93,12 @@ function objectExpression(node: ts.Expression | undefined, checker: ts.TypeCheck
   if (!symbol || seen.has(symbol)) return undefined;
   seen.add(symbol);
   for (const declaration of symbol.declarations ?? []) {
-    if (ts.isVariableDeclaration(declaration) && declaration.initializer && declaration.parent.flags & ts.NodeFlags.Const) {
-      return objectExpression(declaration.initializer, checker, seen);
-    }
+    if (isResolvableDeclaration(declaration, symbol)) return objectExpression(declaration.initializer, checker, seen);
   }
   return undefined;
 }
 
-function evaluate(node: ts.Expression | undefined, checker: ts.TypeChecker, depth = 0, seen = new Set<ts.Symbol>()): Eval | undefined {
+export function evaluate(node: ts.Expression | undefined, checker: ts.TypeChecker, depth = 0, seen = new Set<ts.Symbol>()): Eval | undefined {
   if (!node || depth > 12) return undefined;
   if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isSatisfiesExpression(node) || ts.isNonNullExpression(node)) {
     return evaluate(node.expression, checker, depth + 1, seen);
@@ -101,9 +111,7 @@ function evaluate(node: ts.Expression | undefined, checker: ts.TypeChecker, dept
     if (!symbol || seen.has(symbol)) return undefined;
     seen.add(symbol);
     for (const declaration of symbol.declarations ?? []) {
-      if (ts.isVariableDeclaration(declaration) && declaration.initializer && (declaration.parent.flags & ts.NodeFlags.Const)) {
-        return evaluate(declaration.initializer, checker, depth + 1, seen);
-      }
+      if (isResolvableDeclaration(declaration, symbol)) return evaluate(declaration.initializer, checker, depth + 1, seen);
     }
     return undefined;
   }
@@ -156,7 +164,7 @@ function isRequireAxios(node: ts.Expression): boolean {
     && node.arguments.length === 1 && literal(node.arguments[0]!) === 'axios';
 }
 
-function clientOf(node: ts.Expression, checker: ts.TypeChecker, seen = new Set<ts.Symbol>()): Client | undefined {
+export function clientOf(node: ts.Expression, checker: ts.TypeChecker, seen = new Set<ts.Symbol>()): Client | undefined {
   if (ts.isParenthesizedExpression(node)) return clientOf(node.expression, checker, seen);
   if (ts.isIdentifier(node)) {
     const symbol = checker.getSymbolAtLocation(node);
@@ -278,6 +286,13 @@ function matchingOperations(operations: ApiOperation[], pathname: string, origin
   return matches;
 }
 
+// `JSON.stringify(x)` unwraps to `x`: the scanner reads the value that was serialized, not the call.
+function unwrapJsonStringify(node: ts.Expression): ts.Expression {
+  return ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+    && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === 'JSON'
+    && node.expression.name.text === 'stringify' && node.arguments[0] ? node.arguments[0] : node;
+}
+
 function bindingsFor(source: ts.SourceFile, checker: ts.TypeChecker, url: Eval | undefined, urlNode: ts.Expression | undefined, parsedQuery: string | undefined, body: ts.Expression | undefined): ConsumerBinding[] {
   const bindings: ConsumerBinding[] = [];
   for (const part of url?.parts ?? []) bindings.push({ kind: 'url', name: part.name, range: range(source, part.node) });
@@ -287,9 +302,7 @@ function bindingsFor(source: ts.SourceFile, checker: ts.TypeChecker, url: Eval |
       if (url && !url.dynamic && urlNode) bindings.push({ kind: 'query', name, value, range: range(source, urlNode) });
     }
   }
-  const unwrappedBody = body && ts.isCallExpression(body) && ts.isPropertyAccessExpression(body.expression)
-    && ts.isIdentifier(body.expression.expression) && body.expression.expression.text === 'JSON'
-    && body.expression.name.text === 'stringify' ? body.arguments[0] : body;
+  const unwrappedBody = body && unwrapJsonStringify(body);
   const object = objectExpression(unwrappedBody, checker);
   if (object) {
     for (const member of object.properties) {
@@ -302,6 +315,576 @@ function bindingsFor(source: ts.SourceFile, checker: ts.TypeChecker, url: Eval |
   }
   return bindings;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Direct call-shape extraction, shared between a top-level fetch/axios call and the single
+// recognized call inside a wrapper's body (see src/scan/WRAPPERS.md).
+// ---------------------------------------------------------------------------------------------
+
+interface CallShape {
+  client: Client;
+  method?: HttpMethod;
+  methodUnknown: boolean;
+  urlNode?: ts.Expression;
+  config?: ts.ObjectLiteralExpression;
+  configArgNode?: ts.Expression;
+  configOpaque: boolean;
+  body?: ts.Expression;
+  base?: string;
+  baseUnknown: boolean;
+  baseUncertain: boolean;
+}
+
+function extractCallShape(node: ts.CallExpression, checker: ts.TypeChecker, baseUrl: string | undefined, clientOverride?: Client): CallShape | undefined {
+  let client: Client | undefined = clientOverride;
+  let method: HttpMethod | undefined;
+  let urlNode: ts.Expression | undefined;
+  let config: ts.ObjectLiteralExpression | undefined;
+  let configArgNode: ts.Expression | undefined;
+  let configOpaque = false;
+  let body: ts.Expression | undefined;
+  let methodUnknown = false;
+  const configAt = (index: number) => {
+    configArgNode = node.arguments[index];
+    config = objectExpression(configArgNode, checker);
+    configOpaque = !!configArgNode && !config;
+  };
+  const configProperty = (name: string): Property => configOpaque ? { kind: 'unknown' } : property(config, name, checker);
+  const readMethod = (fallback: HttpMethod) => {
+    const found = configProperty('method');
+    if (found.kind === 'absent') { method = fallback; return; }
+    const value = found.kind === 'value' ? evaluate(found.node, checker) : undefined;
+    method = value && !value.dynamic ? normalizeMethod(value.value) : undefined;
+    methodUnknown = !method;
+  };
+  if (ts.isPropertyAccessExpression(node.expression)) {
+    const name = node.expression.name.text;
+    client ??= clientOf(node.expression.expression, checker);
+    if (client?.kind === 'axios' && AXIOS_METHODS.has(name)) {
+      if (name === 'request') configAt(0);
+      else {
+        method = normalizeMethod(name);
+        urlNode = node.arguments[0];
+        if (name === 'post' || name === 'put' || name === 'patch') { body = node.arguments[1]; configAt(2); }
+        else configAt(1);
+      }
+    } else client = undefined;
+  } else {
+    client ??= clientOf(node.expression, checker);
+    if (client?.kind === 'fetch') {
+      urlNode = node.arguments[0];
+      configAt(1);
+      readMethod('get');
+      body = propertyValue(config, 'body', checker);
+    } else if (client?.kind === 'axios') {
+      const first = node.arguments[0];
+      if (first && !objectExpression(first, checker) && evaluate(first, checker)) { urlNode = first; configAt(1); }
+      else configAt(0);
+    }
+  }
+  if (!client) return undefined;
+  let base = baseUrl;
+  let baseUnknown = false;
+  let baseUncertain = false;
+  if (client.kind === 'axios') {
+    if (!urlNode) {
+      const found = configProperty('url');
+      if (found.kind === 'value') urlNode = found.node;
+    }
+    if (!method && !methodUnknown) readMethod('get');
+    body ??= propertyValue(config, 'data', checker);
+    const requestBase = configProperty('baseURL');
+    if (configOpaque) baseUncertain = true;
+    if (requestBase.kind === 'value') {
+      base = staticBase(evaluate(requestBase.node, checker));
+      baseUnknown = base === undefined;
+    } else if (requestBase.kind === 'unknown' && !configOpaque) baseUnknown = true;
+    else if (client.baseUnknown) { base = undefined; baseUnknown = true; }
+    else base = client.base ?? baseUrl;
+  }
+  return { client, method, methodUnknown, urlNode, config, configArgNode, configOpaque, body, base, baseUnknown, baseUncertain };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Finding/use assembly shared between direct calls and resolved wrapper call sites.
+// ---------------------------------------------------------------------------------------------
+
+interface FinalizeInput {
+  sf: ts.SourceFile; checker: ts.TypeChecker; relative: string; fileHash: string; node: ts.CallExpression;
+  client: Client; method: HttpMethod | undefined; methodUnknown: boolean;
+  urlNode: ts.Expression | undefined; url: Eval | undefined; urlExpressionText: string;
+  base: string | undefined; baseUnknown: boolean; baseUncertain: boolean; scanBaseUrl: string | undefined;
+  config: ts.ObjectLiteralExpression | undefined; body: ts.Expression | undefined;
+  uniqueOperations: ApiOperation[]; apiBase: URL | undefined; changes: ApiChange[]; via?: WrapperReference;
+}
+
+function finalizeUse(input: FinalizeInput): { use: ConsumerUse; findings: Finding[] } {
+  const { sf, checker, relative, fileHash, node, client, method, methodUnknown, urlNode, url, urlExpressionText, base, baseUnknown, baseUncertain, config, body, uniqueOperations, apiBase, changes, via } = input;
+  let value = url?.value;
+  if (url?.unknownPrefix) value = url.value.slice(url.unknownPrefix.length);
+  const relativeValue = value !== undefined && !isAbsoluteUrl(value);
+  // Unknown prefix or base: only the observed path is known, so matches are review hints.
+  const hint = !!url?.unknownPrefix || (client.kind === 'axios' && baseUnknown && relativeValue);
+  const parsed = value === undefined ? undefined
+    : hint ? (value.startsWith('/') ? resolveUrl(value) : undefined)
+    : client.kind === 'axios' && relativeValue && base ? resolveUrl(combineUrls(base, value), input.scanBaseUrl)
+    : resolveUrl(value, input.scanBaseUrl);
+  const matches = parsed ? matchingOperations(uniqueOperations, parsed.pathname, hint ? undefined : parsed.origin, method, apiBase, hint) : [];
+  const originUnconfirmed = matches.some(match => !match.originConfirmed);
+  const operationIds = [...new Set(matches.map(match => match.operation.id))].sort();
+  const resolution = !url || !parsed || !method || methodUnknown || hint ? 'unresolved'
+    : matches.length === 1 && !url.dynamic && !originUnconfirmed && !baseUncertain ? 'resolved' : 'partial';
+  let confidence: Confidence = resolution === 'resolved' ? 'high' : resolution === 'partial' && !originUnconfirmed && !baseUncertain ? 'medium' : 'low';
+  // Scope rule: a call resolved only through a wrapper (or an imported axios instance) is never high confidence.
+  if (via && confidence === 'high') confidence = 'medium';
+  const baseReason = !url ? 'URL expression could not be resolved statically'
+    : !parsed ? (url.unknownPrefix ? 'URL starts with a value that could not be resolved statically' : 'URL or base could not be interpreted')
+    : !method || methodUnknown ? 'HTTP method could not be resolved statically'
+    : hint ? `${url.unknownPrefix ? 'URL base comes from a value' : 'axios baseURL'} that could not be resolved statically; path matches are review hints only`
+    : !matches.length ? 'No operation matched the URL, origin, path and method'
+    : matches.length > 1 ? 'Several operations match the known URL and method'
+    : originUnconfirmed ? `Path matches an operation whose server has no origin; call origin ${parsed.origin} is not confirmed by the server or a known base URL`
+    : baseUncertain ? 'axios request config is not statically known and may override baseURL'
+    : url.dynamic ? 'Path contains a dynamic template value' : 'Literal or immutable URL, method and operation matched';
+  const reason = via ? `${baseReason} (wrapper '${via.name}')` : baseReason;
+  const use: ConsumerUse = {
+    id: stableId('use', { file: relative, start: node.getStart(sf), end: node.getEnd(), client: client.kind }),
+    file: relative, fileHash, range: range(sf, node), client: client.kind,
+    urlExpression: urlExpressionText, ...(parsed ? { url: parsed.url, ...(parsed.origin ? { origin: parsed.origin } : {}) } : {}),
+    ...(method ? { method } : {}), operationIds,
+    bindings: bindingsFor(sf, checker, url, urlNode, parsed?.query, body), resolution, confidence, reason,
+    ...(via ? { via } : {}),
+  };
+  const findings: Finding[] = [];
+  for (const change of changes) {
+    if (change.classification === 'compatible') continue;
+    if (!matches.some(({ operation }) => operation.id === change.operationId || operation.operationId === change.operationId)) continue;
+    findings.push({
+      id: stableId('finding', { change: change.id, use: use.id }), changeId: change.id, useId: use.id,
+      consequence: `${change.classification === 'breaking' ? 'Potential break' : 'Review needed'}: ${change.explanation}`,
+      evidence: [
+        { kind: 'ast', message: `HTTP ${method ?? 'unknown'} call; ${reason}`, file: relative, range: use.range },
+        ...change.evidence,
+      ],
+      confidence: change.classification === 'ambiguous' || confidence === 'low' ? 'low' : confidence,
+      reviewStatus: 'pending',
+    });
+  }
+  return { use, findings };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Never-reassigned `let` detection (src/scan/WRAPPERS.md, rule 3).
+// ---------------------------------------------------------------------------------------------
+
+function collectResolvableLets(source: ts.SourceFile, checker: ts.TypeChecker): Set<ts.Symbol> {
+  const letSymbols = new Set<ts.Symbol>();
+  function hasExportModifier(node: ts.VariableStatement): boolean {
+    return !!node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword);
+  }
+  function visitDecls(node: ts.Node): void {
+    if (ts.isVariableStatement(node) && (node.declarationList.flags & ts.NodeFlags.Let) && !hasExportModifier(node)) {
+      for (const decl of node.declarationList.declarations) {
+        if (ts.isIdentifier(decl.name) && decl.initializer) {
+          const symbol = checker.getSymbolAtLocation(decl.name);
+          if (symbol) letSymbols.add(symbol);
+        }
+      }
+    }
+    ts.forEachChild(node, visitDecls);
+  }
+  visitDecls(source);
+  if (letSymbols.size === 0) return letSymbols;
+  const unstable = new Set<ts.Symbol>();
+  function markTarget(expr: ts.Expression): void {
+    if (ts.isParenthesizedExpression(expr)) { markTarget(expr.expression); return; }
+    if (ts.isIdentifier(expr)) { const symbol = checker.getSymbolAtLocation(expr); if (symbol) unstable.add(symbol); return; }
+    if (ts.isArrayLiteralExpression(expr)) { for (const el of expr.elements) { if (!ts.isOmittedExpression(el)) markTarget(ts.isSpreadElement(el) ? el.expression : el); } return; }
+    if (ts.isObjectLiteralExpression(expr)) {
+      for (const p of expr.properties) {
+        if (ts.isShorthandPropertyAssignment(p)) markTarget(p.name);
+        else if (ts.isPropertyAssignment(p)) markTarget(p.initializer);
+        else if (ts.isSpreadAssignment(p)) markTarget(p.expression);
+      }
+    }
+  }
+  function visitMutations(node: ts.Node): void {
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment) markTarget(node.left);
+    else if ((ts.isPostfixUnaryExpression(node) || ts.isPrefixUnaryExpression(node))
+      && (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken)) markTarget(node.operand);
+    else if ((ts.isForInStatement(node) || ts.isForOfStatement(node)) && !ts.isVariableDeclarationList(node.initializer)) markTarget(node.initializer);
+    else if (ts.isExportSpecifier(node)) { const symbol = checker.getSymbolAtLocation(node.propertyName ?? node.name); if (symbol) unstable.add(symbol); }
+    else if (ts.isExportAssignment(node) && !node.isExportEquals) markTarget(node.expression);
+    ts.forEachChild(node, visitMutations);
+  }
+  visitMutations(source);
+  const resolvable = new Set<ts.Symbol>();
+  for (const symbol of letSymbols) if (!unstable.has(symbol)) resolvable.add(symbol);
+  return resolvable;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Wrapper recognition and one-hop import resolution (src/scan/WRAPPERS.md).
+// ---------------------------------------------------------------------------------------------
+
+type WrapperUrlShape = { kind: 'whole'; param: ts.Symbol } | { kind: 'join'; template: string; param: ts.Symbol; paramName: string };
+
+interface WrapperSpec {
+  name: string;
+  source: ts.SourceFile;
+  declRange: CodeRange;
+  params: ts.Symbol[];
+  client: Client;
+  urlShape: WrapperUrlShape;
+  fixedMethod?: HttpMethod;
+  configForwardedParam?: ts.Symbol;
+  bodyForwardedParam?: ts.Symbol;
+}
+
+interface AxiosInstanceSpec { client: Client; declRange: CodeRange }
+
+interface WrapperIndex {
+  byDeclSymbol: Map<ts.Symbol, WrapperSpec>;
+  byFileAndName: Map<string, Map<string, WrapperSpec>>;
+  instanceByFileAndName: Map<string, Map<string, AxiosInstanceSpec>>;
+}
+
+function unwrapTrivial(node: ts.Expression): ts.Expression {
+  if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isSatisfiesExpression(node) || ts.isNonNullExpression(node)) return unwrapTrivial(node.expression);
+  return node;
+}
+
+function paramRef(node: ts.Expression | undefined, paramSet: Set<ts.Symbol>, checker: ts.TypeChecker): ts.Symbol | undefined {
+  if (!node) return undefined;
+  const unwrapped = unwrapTrivial(node);
+  if (!ts.isIdentifier(unwrapped)) return undefined;
+  const symbol = checker.getSymbolAtLocation(unwrapped);
+  return symbol && paramSet.has(symbol) ? symbol : undefined;
+}
+
+// The URL is exactly a wrapper parameter, or a resolvable base (literal/immutable constant)
+// joined to exactly one parameter by `+` or a template literal.
+function analyzeWrapperUrl(node: ts.Expression, checker: ts.TypeChecker, paramSet: Set<ts.Symbol>): WrapperUrlShape | undefined {
+  const unwrapped = unwrapTrivial(node);
+  const whole = paramRef(unwrapped, paramSet, checker);
+  if (whole) return { kind: 'whole', param: whole };
+  if (ts.isBinaryExpression(unwrapped) && unwrapped.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    const rightParam = paramRef(unwrapped.right, paramSet, checker);
+    if (rightParam) {
+      const base = evaluate(unwrapped.left, checker);
+      const name = (unwrapTrivial(unwrapped.right) as ts.Identifier).text;
+      if (base && !base.dynamic) return { kind: 'join', template: base.value + `{${name}}`, param: rightParam, paramName: name };
+    }
+    const leftParam = paramRef(unwrapped.left, paramSet, checker);
+    if (leftParam) {
+      const base = evaluate(unwrapped.right, checker);
+      const name = (unwrapTrivial(unwrapped.left) as ts.Identifier).text;
+      if (base && !base.dynamic) return { kind: 'join', template: `{${name}}` + base.value, param: leftParam, paramName: name };
+    }
+    return undefined;
+  }
+  if (ts.isTemplateExpression(unwrapped)) {
+    let template = unwrapped.head.text;
+    let param: ts.Symbol | undefined;
+    let paramName = '';
+    for (const span of unwrapped.templateSpans) {
+      const p = paramRef(span.expression, paramSet, checker);
+      if (p) {
+        if (param) return undefined; // at most one hole: soundness over coverage
+        param = p;
+        paramName = (unwrapTrivial(span.expression) as ts.Identifier).text;
+        template += `{${paramName}}`;
+      } else {
+        const resolved = evaluate(span.expression, checker);
+        if (!resolved || resolved.dynamic) return undefined;
+        template += resolved.value;
+      }
+      template += span.literal.text;
+    }
+    if (!param) return undefined;
+    return { kind: 'join', template, param, paramName };
+  }
+  return undefined;
+}
+
+function analyzeWrapperCall(call: ts.CallExpression, checker: ts.TypeChecker, paramSet: Set<ts.Symbol>): Pick<WrapperSpec, 'client' | 'urlShape' | 'fixedMethod' | 'configForwardedParam' | 'bodyForwardedParam'> | undefined {
+  const shape = extractCallShape(call, checker, undefined);
+  if (!shape) return undefined;
+  const { client, urlNode, config, configArgNode, body, method, methodUnknown } = shape;
+  if (!urlNode) return undefined;
+  const urlShape = analyzeWrapperUrl(urlNode, checker, paramSet);
+  if (!urlShape) return undefined;
+  const axiosShorthand = ts.isPropertyAccessExpression(call.expression) && client.kind === 'axios' ? call.expression.name.text : undefined;
+  let fixedMethod: HttpMethod | undefined;
+  let configForwardedParam: ts.Symbol | undefined;
+  let bodyForwardedParam: ts.Symbol | undefined;
+  if (axiosShorthand && axiosShorthand !== 'request') fixedMethod = normalizeMethod(axiosShorthand);
+  else if (!methodUnknown && method) fixedMethod = method;
+  if (configArgNode && !config) {
+    const p = paramRef(configArgNode, paramSet, checker);
+    if (p) configForwardedParam = p;
+  }
+  if (!configForwardedParam && body) {
+    const p = paramRef(unwrapJsonStringify(body), paramSet, checker);
+    if (p) bodyForwardedParam = p;
+  }
+  return { client, urlShape, fixedMethod, configForwardedParam, bodyForwardedParam };
+}
+
+function hasModifier(node: ts.HasModifiers, kind: ts.SyntaxKind): boolean {
+  return !!ts.getModifiers(node)?.some(m => m.kind === kind);
+}
+
+function detectWrapperFromFunction(fn: ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression, name: string, nameRangeNode: ts.Node, source: ts.SourceFile, checker: ts.TypeChecker): WrapperSpec | undefined {
+  if (fn.parameters.some(p => p.dotDotDotToken || p.initializer || !ts.isIdentifier(p.name))) return undefined;
+  const params: ts.Symbol[] = [];
+  for (const p of fn.parameters) {
+    const symbol = checker.getSymbolAtLocation(p.name as ts.Identifier);
+    if (!symbol) return undefined;
+    params.push(symbol);
+  }
+  const body = fn.body;
+  if (!body) return undefined;
+  let expr: ts.Expression | undefined;
+  if (ts.isBlock(body)) {
+    if (body.statements.length !== 1) return undefined;
+    const stmt = body.statements[0];
+    if (!stmt || !ts.isReturnStatement(stmt) || !stmt.expression) return undefined;
+    expr = stmt.expression;
+  } else {
+    expr = body;
+  }
+  if (ts.isAwaitExpression(expr)) expr = expr.expression;
+  if (!ts.isCallExpression(expr)) return undefined;
+  const shape = analyzeWrapperCall(expr, checker, new Set(params));
+  if (!shape) return undefined;
+  return { name, source, declRange: range(source, nameRangeNode), params, ...shape };
+}
+
+function buildWrapperIndex(sourceFiles: ts.SourceFile[], checker: ts.TypeChecker, resolvableLetsByFile: Map<ts.SourceFile, Set<ts.Symbol>>): WrapperIndex {
+  const index: WrapperIndex = { byDeclSymbol: new Map(), byFileAndName: new Map(), instanceByFileAndName: new Map() };
+  for (const source of sourceFiles) {
+    resolvableLets = resolvableLetsByFile.get(source) ?? new Set();
+    const wrapperNames = new Map<string, WrapperSpec>();
+    const instanceNames = new Map<string, AxiosInstanceSpec>();
+    for (const stmt of source.statements) {
+      if (ts.isFunctionDeclaration(stmt) && stmt.body) {
+        const isDefault = hasModifier(stmt, ts.SyntaxKind.DefaultKeyword);
+        const declName = stmt.name?.text ?? 'default';
+        const spec = detectWrapperFromFunction(stmt, declName, stmt.name ?? stmt, source, checker);
+        if (spec) {
+          wrapperNames.set(declName, spec);
+          if (isDefault) wrapperNames.set('default', spec);
+          if (stmt.name) { const symbol = checker.getSymbolAtLocation(stmt.name); if (symbol) index.byDeclSymbol.set(symbol, spec); }
+        }
+        continue;
+      }
+      if (ts.isVariableStatement(stmt) && (stmt.declarationList.flags & ts.NodeFlags.Const)) {
+        for (const decl of stmt.declarationList.declarations) {
+          if (!ts.isIdentifier(decl.name) || !decl.initializer) continue;
+          const name = decl.name.text;
+          if (ts.isArrowFunction(decl.initializer) || ts.isFunctionExpression(decl.initializer)) {
+            const spec = detectWrapperFromFunction(decl.initializer, name, decl.name, source, checker);
+            if (spec) {
+              wrapperNames.set(name, spec);
+              const symbol = checker.getSymbolAtLocation(decl.name);
+              if (symbol) index.byDeclSymbol.set(symbol, spec);
+            }
+            continue;
+          }
+          const client = clientOf(decl.initializer, checker);
+          if (client?.kind === 'axios') instanceNames.set(name, { client, declRange: range(source, decl.name) });
+        }
+        continue;
+      }
+      if (ts.isExportAssignment(stmt) && !stmt.isExportEquals) {
+        const expr = stmt.expression;
+        if (ts.isFunctionExpression(expr) || ts.isArrowFunction(expr)) {
+          const spec = detectWrapperFromFunction(expr, 'default', expr.name ?? stmt, source, checker);
+          if (spec) wrapperNames.set('default', spec);
+        } else if (ts.isIdentifier(expr)) {
+          const existing = wrapperNames.get(expr.text);
+          if (existing) wrapperNames.set('default', existing);
+        }
+      }
+    }
+    if (wrapperNames.size) index.byFileAndName.set(source.fileName, wrapperNames);
+    if (instanceNames.size) index.instanceByFileAndName.set(source.fileName, instanceNames);
+  }
+  return index;
+}
+
+interface ImportTarget { specifier: string; importedName: string; fromFile: string }
+
+function importDeclarationOf(node: ts.Node): ts.ImportDeclaration | undefined {
+  let current: ts.Node | undefined = node;
+  for (let i = 0; i < 4 && current; i++) {
+    if (ts.isImportDeclaration(current)) return current;
+    current = current.parent;
+  }
+  return undefined;
+}
+
+// Resolves a same-file symbol to the one relative import (static ES import or CJS require
+// destructure) that introduced it. Package imports and non-relative specifiers are rejected here.
+function resolveImportTarget(symbol: ts.Symbol): ImportTarget | undefined {
+  for (const declaration of symbol.declarations ?? []) {
+    if (ts.isImportSpecifier(declaration) || ts.isImportClause(declaration)) {
+      const importDecl = importDeclarationOf(declaration);
+      const specifier = importDecl && literal(importDecl.moduleSpecifier);
+      if (!specifier || !(specifier.startsWith('./') || specifier.startsWith('../'))) continue;
+      const importedName = ts.isImportSpecifier(declaration) ? (declaration.propertyName ?? declaration.name).text : 'default';
+      return { specifier, importedName, fromFile: declaration.getSourceFile().fileName };
+    }
+    if (ts.isBindingElement(declaration) && ts.isObjectBindingPattern(declaration.parent)) {
+      const varDecl = declaration.parent.parent;
+      if (ts.isVariableDeclaration(varDecl) && varDecl.initializer && ts.isCallExpression(varDecl.initializer)
+        && ts.isIdentifier(varDecl.initializer.expression) && varDecl.initializer.expression.text === 'require'
+        && varDecl.initializer.arguments.length === 1) {
+        const specifier = literal(varDecl.initializer.arguments[0]!);
+        const importedName = declaration.propertyName ?? declaration.name;
+        if (!specifier || !(specifier.startsWith('./') || specifier.startsWith('../')) || !ts.isIdentifier(importedName)) continue;
+        return { specifier, importedName: importedName.text, fromFile: declaration.getSourceFile().fileName };
+      }
+    }
+  }
+  return undefined;
+}
+
+// Minimal NodeNext-style resolver, matched only against files already loaded by this scan
+// (so excluded, oversize or symlinked files and anything outside the repository are rejected).
+function resolveModuleFile(fromFile: string, specifier: string, filesByPath: Map<string, ts.SourceFile>): ts.SourceFile | undefined {
+  const resolved = path.resolve(path.dirname(fromFile), specifier);
+  const ext = path.extname(resolved);
+  const swap: Record<string, string[]> = { '.js': ['.ts', '.tsx', '.mts'], '.jsx': ['.tsx'], '.mjs': ['.mts'], '.cjs': ['.cts'] };
+  const candidates: string[] = [];
+  if (ext && swap[ext]) candidates.push(...swap[ext].map(e => resolved.slice(0, -ext.length) + e));
+  if (ext && EXTENSIONS.has(ext)) candidates.push(resolved);
+  if (!ext) {
+    for (const e of ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs']) candidates.push(resolved + e);
+    for (const e of ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx']) candidates.push(path.join(resolved, 'index' + e));
+  }
+  for (const candidate of candidates) { const found = filesByPath.get(candidate); if (found) return found; }
+  return undefined;
+}
+
+function toRepoRelative(root: string, fileName: string): string {
+  return path.relative(root, fileName).split(path.sep).join('/');
+}
+
+function findWrapperForCallee(expr: ts.Expression, checker: ts.TypeChecker, index: WrapperIndex, filesByPath: Map<string, ts.SourceFile>): WrapperSpec | undefined {
+  if (!ts.isIdentifier(expr)) return undefined;
+  const symbol = checker.getSymbolAtLocation(expr);
+  if (!symbol) return undefined;
+  const direct = index.byDeclSymbol.get(symbol);
+  if (direct) return direct;
+  const imported = resolveImportTarget(symbol);
+  if (!imported) return undefined;
+  const target = resolveModuleFile(imported.fromFile, imported.specifier, filesByPath);
+  if (!target) return undefined;
+  return index.byFileAndName.get(target.fileName)?.get(imported.importedName);
+}
+
+function resolveImportedAxiosInstance(expr: ts.Expression, checker: ts.TypeChecker, index: WrapperIndex, filesByPath: Map<string, ts.SourceFile>, root: string): { client: Client; via: WrapperReference } | undefined {
+  if (!ts.isIdentifier(expr)) return undefined;
+  const symbol = checker.getSymbolAtLocation(expr);
+  if (!symbol) return undefined;
+  const imported = resolveImportTarget(symbol);
+  if (!imported) return undefined;
+  const target = resolveModuleFile(imported.fromFile, imported.specifier, filesByPath);
+  if (!target) return undefined;
+  const found = index.instanceByFileAndName.get(target.fileName)?.get(imported.importedName);
+  if (!found) return undefined;
+  return { client: found.client, via: { name: imported.importedName, file: toRepoRelative(root, target.fileName), range: found.declRange } };
+}
+
+function resolveWrapperCallDetails(spec: WrapperSpec, call: ts.CallExpression, checker: ts.TypeChecker, scanBaseUrl: string | undefined) {
+  let config: ts.ObjectLiteralExpression | undefined;
+  let configOpaque = false;
+  let method = spec.fixedMethod;
+  let methodUnknown = method === undefined;
+  let body: ts.Expression | undefined;
+  if (spec.configForwardedParam) {
+    const index = spec.params.indexOf(spec.configForwardedParam);
+    const argNode = index >= 0 ? call.arguments[index] : undefined;
+    config = objectExpression(argNode, checker);
+    configOpaque = !!argNode && !config;
+    if (method === undefined) {
+      const prop = configOpaque ? { kind: 'unknown' } as Property : property(config, 'method', checker);
+      if (prop.kind === 'absent') { method = 'get'; methodUnknown = false; }
+      else if (prop.kind === 'value') {
+        const val = evaluate(prop.node, checker);
+        method = val && !val.dynamic ? normalizeMethod(val.value) : undefined;
+        methodUnknown = !method;
+      } else methodUnknown = true;
+    }
+    body = configOpaque ? undefined : propertyValue(config, spec.client.kind === 'fetch' ? 'body' : 'data', checker);
+  } else if (spec.bodyForwardedParam) {
+    const index = spec.params.indexOf(spec.bodyForwardedParam);
+    body = index >= 0 ? call.arguments[index] : undefined;
+  }
+  let base = scanBaseUrl;
+  let baseUnknown = false;
+  const baseUncertain = configOpaque;
+  if (spec.client.kind === 'axios') {
+    const requestBase = configOpaque ? { kind: 'unknown' } as Property : property(config, 'baseURL', checker);
+    if (requestBase.kind === 'value') { base = staticBase(evaluate(requestBase.node, checker)); baseUnknown = base === undefined; }
+    else if (requestBase.kind === 'unknown' && !configOpaque) baseUnknown = true;
+    else if (spec.client.baseUnknown) { base = undefined; baseUnknown = true; }
+    else base = spec.client.base ?? scanBaseUrl;
+  }
+  return { method, methodUnknown, config, body, base, baseUnknown, baseUncertain };
+}
+
+function resolveWrapperUrl(spec: WrapperSpec, call: ts.CallExpression, checker: ts.TypeChecker, sf: ts.SourceFile): { url: Eval | undefined; urlNode: ts.Expression | undefined; urlExpressionText: string } {
+  const index = spec.params.indexOf(spec.urlShape.param);
+  const argNode = index >= 0 ? call.arguments[index] : undefined;
+  if (!argNode) return { url: undefined, urlNode: undefined, urlExpressionText: '' };
+  if (spec.urlShape.kind === 'whole') return { url: evaluate(argNode, checker), urlNode: argNode, urlExpressionText: argNode.getText(sf) };
+  const placeholder = `{${spec.urlShape.paramName}}`;
+  const resolved = evaluate(argNode, checker);
+  const combinedText = spec.urlShape.template.replace(placeholder, argNode.getText(sf));
+  if (resolved) return { url: { value: spec.urlShape.template.replace(placeholder, resolved.value), dynamic: resolved.dynamic, parts: resolved.parts }, urlNode: undefined, urlExpressionText: combinedText };
+  return { url: { value: spec.urlShape.template, dynamic: true, parts: [{ name: spec.urlShape.paramName, node: argNode }] }, urlNode: undefined, urlExpressionText: combinedText };
+}
+
+interface ResolvedViaCall {
+  client: Client; method: HttpMethod | undefined; methodUnknown: boolean;
+  urlNode: ts.Expression | undefined; url: Eval | undefined; urlExpressionText: string;
+  base: string | undefined; baseUnknown: boolean; baseUncertain: boolean;
+  config: ts.ObjectLiteralExpression | undefined; body: ts.Expression | undefined; via: WrapperReference;
+}
+
+function resolveWrapperCall(node: ts.CallExpression, sf: ts.SourceFile, checker: ts.TypeChecker, index: WrapperIndex, filesByPath: Map<string, ts.SourceFile>, root: string, scanBaseUrl: string | undefined): ResolvedViaCall | undefined {
+  if (!ts.isIdentifier(node.expression)) return undefined;
+  const spec = findWrapperForCallee(node.expression, checker, index, filesByPath);
+  if (!spec) return undefined;
+  const { url, urlNode, urlExpressionText } = resolveWrapperUrl(spec, node, checker, sf);
+  const details = resolveWrapperCallDetails(spec, node, checker, scanBaseUrl);
+  return {
+    client: spec.client, method: details.method, methodUnknown: details.methodUnknown,
+    urlNode, url, urlExpressionText, base: details.base, baseUnknown: details.baseUnknown, baseUncertain: details.baseUncertain,
+    config: details.config, body: details.body,
+    via: { name: spec.name, file: toRepoRelative(root, spec.source.fileName), range: spec.declRange },
+  };
+}
+
+function resolveImportedAxiosInstanceCall(node: ts.CallExpression, sf: ts.SourceFile, checker: ts.TypeChecker, index: WrapperIndex, filesByPath: Map<string, ts.SourceFile>, root: string, scanBaseUrl: string | undefined): ResolvedViaCall | undefined {
+  if (!ts.isPropertyAccessExpression(node.expression)) return undefined;
+  const instance = resolveImportedAxiosInstance(node.expression.expression, checker, index, filesByPath, root);
+  if (!instance) return undefined;
+  const shape = extractCallShape(node, checker, scanBaseUrl, instance.client);
+  if (!shape) return undefined;
+  const url = evaluate(shape.urlNode, checker);
+  return {
+    client: shape.client, method: shape.method, methodUnknown: shape.methodUnknown,
+    urlNode: shape.urlNode, url, urlExpressionText: shape.urlNode?.getText(sf) ?? '',
+    base: shape.base, baseUnknown: shape.baseUnknown, baseUncertain: shape.baseUncertain,
+    config: shape.config, body: shape.body, via: instance.via,
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
 
 async function collectFiles(root: string, limits: ResourceLimits, excludes: string[], signal: AbortSignal | undefined, diagnostics: Diagnostic[]): Promise<string[]> {
   const files: string[] = [];
@@ -338,6 +921,7 @@ export async function scanRepository(options: ScanOptions): Promise<ScanResult> 
   const limitations = [
     'Static analysis only: unknown wrappers, computed properties, mutable values and complex data flow require review.',
     'Response properties are traced only through immutable direct response variables and fetch json() variables.',
+    'Repository-local wrappers are resolved only for a single recognized call, same file or one relative import hop, with confidence capped at medium; see src/scan/WRAPPERS.md.',
   ];
   const limits: ResourceLimits = { ...DEFAULT_LIMITS, ...options.limits };
   if (Object.values(limits).some(value => !Number.isFinite(value) || value < 0)) throw new Error('Invalid scan limits');
@@ -374,135 +958,47 @@ export async function scanRepository(options: ScanOptions): Promise<ScanResult> 
   const uniqueOperations = [...new Map(operations.map(operation => [operation.id, operation])).values()];
   const apiBase = httpUrl(options.baseUrl);
   const begin = Date.now();
+
+  const sourceFiles = readableFiles.map(file => program.getSourceFile(file)).filter((sf): sf is ts.SourceFile => !!sf);
+  const filesByPath = new Map(sourceFiles.map(sf => [sf.fileName, sf]));
+  const resolvableLetsByFile = new Map(sourceFiles.map(sf => [sf, collectResolvableLets(sf, checker)]));
+  const wrapperIndex = buildWrapperIndex(sourceFiles, checker, resolvableLetsByFile);
+
   for (const file of readableFiles) {
     if (options.signal?.aborted) throw new Error('Scan aborted');
     if (Date.now() - begin > limits.timeoutMs) { diagnostics.push({ code: 'SCAN_TIMEOUT', severity: 'warning', message: 'Analysis time limit reached' }); break; }
     const source = program.getSourceFile(file);
     if (!source) continue;
     const sf = source;
+    resolvableLets = resolvableLetsByFile.get(sf) ?? new Set();
     const relative = path.relative(root, file).split(path.sep).join('/');
     const fileHash = sha256(contents.get(file)!);
     const callUses = new Map<ts.CallExpression, ConsumerUse>();
     for (const error of program.getSyntacticDiagnostics(sf)) diagnostics.push({ code: 'SCAN_PARSE_ERROR', severity: 'warning', message: ts.flattenDiagnosticMessageText(error.messageText, '\n'), file: relative });
     function visit(node: ts.Node): void {
       if (ts.isCallExpression(node)) {
-        let client: Client | undefined;
-        let method: HttpMethod | undefined;
-        let urlNode: ts.Expression | undefined;
-        let config: ts.ObjectLiteralExpression | undefined;
-        // A config argument exists but is not a statically known object literal.
-        let configOpaque = false;
-        let body: ts.Expression | undefined;
-        let methodUnknown = false;
-        const configAt = (index: number) => {
-          const argument = node.arguments[index];
-          config = objectExpression(argument, checker);
-          configOpaque = !!argument && !config;
-        };
-        const configProperty = (name: string): Property => configOpaque ? { kind: 'unknown' } : property(config, name, checker);
-        const readMethod = (fallback: HttpMethod) => {
-          const found = configProperty('method');
-          if (found.kind === 'absent') { method = fallback; return; }
-          const value = found.kind === 'value' ? evaluate(found.node, checker) : undefined;
-          method = value && !value.dynamic ? normalizeMethod(value.value) : undefined;
-          methodUnknown = !method;
-        };
-        if (ts.isPropertyAccessExpression(node.expression)) {
-          const name = node.expression.name.text;
-          client = clientOf(node.expression.expression, checker);
-          if (client?.kind === 'axios' && AXIOS_METHODS.has(name)) {
-            if (name === 'request') configAt(0);
-            else {
-              method = normalizeMethod(name);
-              urlNode = node.arguments[0];
-              if (name === 'post' || name === 'put' || name === 'patch') { body = node.arguments[1]; configAt(2); }
-              else configAt(1);
-            }
-          } else client = undefined;
-        } else {
-          client = clientOf(node.expression, checker);
-          if (client?.kind === 'fetch') {
-            urlNode = node.arguments[0];
-            configAt(1);
-            readMethod('get');
-            body = propertyValue(config, 'body', checker);
-          } else if (client?.kind === 'axios') {
-            // axios(config) or axios(url[, config])
-            const first = node.arguments[0];
-            if (first && !objectExpression(first, checker) && evaluate(first, checker)) { urlNode = first; configAt(1); }
-            else configAt(0);
-          }
-        }
-        if (client) {
-          let base = options.baseUrl;
-          let baseUnknown = false;
-          let baseUncertain = false;
-          if (client.kind === 'axios') {
-            if (!urlNode) {
-              const found = configProperty('url');
-              if (found.kind === 'value') urlNode = found.node;
-            }
-            if (!method && !methodUnknown) readMethod('get');
-            body ??= propertyValue(config, 'data', checker);
-            const requestBase = configProperty('baseURL');
-            if (configOpaque) baseUncertain = true;
-            if (requestBase.kind === 'value') {
-              base = staticBase(evaluate(requestBase.node, checker));
-              baseUnknown = base === undefined;
-            } else if (requestBase.kind === 'unknown' && !configOpaque) baseUnknown = true;
-            else if (client.baseUnknown) { base = undefined; baseUnknown = true; }
-            else base = client.base ?? options.baseUrl;
-          }
-          const url = evaluate(urlNode, checker);
-          let value = url?.value;
-          if (url?.unknownPrefix) value = url.value.slice(url.unknownPrefix.length);
-          const relativeValue = value !== undefined && !isAbsoluteUrl(value);
-          // Unknown prefix or base: only the observed path is known, so matches are review hints.
-          const hint = !!url?.unknownPrefix || (client.kind === 'axios' && baseUnknown && relativeValue);
-          const parsed = value === undefined ? undefined
-            : hint ? (value.startsWith('/') ? resolveUrl(value) : undefined)
-            : client.kind === 'axios' && relativeValue && base ? resolveUrl(combineUrls(base, value), options.baseUrl)
-            : resolveUrl(value, options.baseUrl);
-          const matches = parsed ? matchingOperations(uniqueOperations, parsed.pathname, hint ? undefined : parsed.origin, method, apiBase, hint) : [];
-          const originUnconfirmed = matches.some(match => !match.originConfirmed);
-          const operationIds = [...new Set(matches.map(match => match.operation.id))].sort();
-          const resolution = !url || !parsed || !method || methodUnknown || hint ? 'unresolved'
-            : matches.length === 1 && !url.dynamic && !originUnconfirmed && !baseUncertain ? 'resolved' : 'partial';
-          const confidence = resolution === 'resolved' ? 'high' : resolution === 'partial' && !originUnconfirmed && !baseUncertain ? 'medium' : 'low';
-          const reason = !url ? 'URL expression could not be resolved statically'
-            : !parsed ? (url.unknownPrefix ? 'URL starts with a value that could not be resolved statically' : 'URL or base could not be interpreted')
-            : !method || methodUnknown ? 'HTTP method could not be resolved statically'
-            : hint ? `${url.unknownPrefix ? 'URL base comes from a value' : 'axios baseURL'} that could not be resolved statically; path matches are review hints only`
-            : !matches.length ? 'No operation matched the URL, origin, path and method'
-            : matches.length > 1 ? 'Several operations match the known URL and method'
-            : originUnconfirmed ? `Path matches an operation whose server has no origin; call origin ${parsed.origin} is not confirmed by the server or a known base URL`
-            : baseUncertain ? 'axios request config is not statically known and may override baseURL'
-            : url.dynamic ? 'Path contains a dynamic template value' : 'Literal or immutable URL, method and operation matched';
-          const use: ConsumerUse = {
-            id: stableId('use', { file: relative, start: node.getStart(sf), end: node.getEnd(), client: client.kind }),
-            file: relative, fileHash, range: range(sf, node), client: client.kind,
-            urlExpression: urlNode?.getText(sf) ?? '', ...(parsed ? { url: parsed.url, ...(parsed.origin ? { origin: parsed.origin } : {}) } : {}),
-            ...(method ? { method } : {}), operationIds,
-            bindings: bindingsFor(sf, checker, url, urlNode, parsed?.query, body), resolution, confidence, reason,
-          };
+        const shape = extractCallShape(node, checker, options.baseUrl);
+        const resolvedVia = shape ? undefined
+          : resolveWrapperCall(node, sf, checker, wrapperIndex, filesByPath, root, options.baseUrl)
+          ?? resolveImportedAxiosInstanceCall(node, sf, checker, wrapperIndex, filesByPath, root, options.baseUrl);
+        if (shape || resolvedVia) {
+          const url = shape ? evaluate(shape.urlNode, checker) : resolvedVia!.url;
+          const { use, findings: newFindings } = finalizeUse({
+            sf, checker, relative, fileHash, node,
+            client: (shape ?? resolvedVia!).client,
+            method: (shape ?? resolvedVia!).method, methodUnknown: (shape ?? resolvedVia!).methodUnknown,
+            urlNode: shape ? shape.urlNode : resolvedVia!.urlNode, url,
+            urlExpressionText: shape ? (shape.urlNode?.getText(sf) ?? '') : resolvedVia!.urlExpressionText,
+            base: (shape ?? resolvedVia!).base, baseUnknown: (shape ?? resolvedVia!).baseUnknown, baseUncertain: (shape ?? resolvedVia!).baseUncertain,
+            scanBaseUrl: options.baseUrl,
+            config: (shape ?? resolvedVia!).config, body: (shape ?? resolvedVia!).body,
+            uniqueOperations, apiBase, changes: options.changes,
+            ...(resolvedVia ? { via: resolvedVia.via } : {}),
+          });
           uses.push(use);
           callUses.set(node, use);
-          if (resolution !== 'resolved') diagnostics.push({ code: 'SCAN_REVIEW_REQUIRED', severity: 'warning', message: reason, file: relative });
-          for (const change of options.changes) {
-            if (change.classification === 'compatible') continue;
-            if (!matches.some(({ operation }) => operation.id === change.operationId || operation.operationId === change.operationId)) continue;
-            const finding: Finding = {
-              id: stableId('finding', { change: change.id, use: use.id }), changeId: change.id, useId: use.id,
-              consequence: `${change.classification === 'breaking' ? 'Potential break' : 'Review needed'}: ${change.explanation}`,
-              evidence: [
-                { kind: 'ast', message: `HTTP ${method ?? 'unknown'} call; ${reason}`, file: relative, range: use.range },
-                ...change.evidence,
-              ],
-              confidence: change.classification === 'ambiguous' || confidence === 'low' ? 'low' : confidence,
-              reviewStatus: 'pending',
-            };
-            findings.push(finding);
-          }
+          if (use.resolution !== 'resolved') diagnostics.push({ code: 'SCAN_REVIEW_REQUIRED', severity: 'warning', message: use.reason, file: relative });
+          findings.push(...newFindings);
         }
       }
       ts.forEachChild(node, visit);
