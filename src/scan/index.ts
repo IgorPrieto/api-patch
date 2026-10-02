@@ -416,10 +416,14 @@ interface FinalizeInput {
   base: string | undefined; baseUnknown: boolean; baseUncertain: boolean; scanBaseUrl: string | undefined;
   config: ts.ObjectLiteralExpression | undefined; body: ts.Expression | undefined;
   uniqueOperations: ApiOperation[]; apiBase: URL | undefined; changes: ApiChange[]; via?: WrapperReference;
+  // True for the single recognized call inside a wrapper's own body: reported for transparency as an
+  // unresolved, low-confidence use (today's behaviour for an unrecognized shape), with no operation
+  // matches and no findings, so it never duplicates a finding already reported at a resolved call site.
+  isWrapperDefinition?: boolean;
 }
 
 function finalizeUse(input: FinalizeInput): { use: ConsumerUse; findings: Finding[] } {
-  const { sf, checker, relative, fileHash, node, client, method, methodUnknown, urlNode, url, urlExpressionText, base, baseUnknown, baseUncertain, config, body, uniqueOperations, apiBase, changes, via } = input;
+  const { sf, checker, relative, fileHash, node, client, method, methodUnknown, urlNode, url, urlExpressionText, base, baseUnknown, baseUncertain, config, body, uniqueOperations, apiBase, changes, via, isWrapperDefinition } = input;
   let value = url?.value;
   if (url?.unknownPrefix) value = url.value.slice(url.unknownPrefix.length);
   const relativeValue = value !== undefined && !isAbsoluteUrl(value);
@@ -429,15 +433,18 @@ function finalizeUse(input: FinalizeInput): { use: ConsumerUse; findings: Findin
     : hint ? (value.startsWith('/') ? resolveUrl(value) : undefined)
     : client.kind === 'axios' && relativeValue && base ? resolveUrl(combineUrls(base, value), input.scanBaseUrl)
     : resolveUrl(value, input.scanBaseUrl);
-  const matches = parsed ? matchingOperations(uniqueOperations, parsed.pathname, hint ? undefined : parsed.origin, method, apiBase, hint) : [];
+  const matches = parsed && !isWrapperDefinition ? matchingOperations(uniqueOperations, parsed.pathname, hint ? undefined : parsed.origin, method, apiBase, hint) : [];
   const originUnconfirmed = matches.some(match => !match.originConfirmed);
   const operationIds = [...new Set(matches.map(match => match.operation.id))].sort();
-  const resolution = !url || !parsed || !method || methodUnknown || hint ? 'unresolved'
+  const resolution = isWrapperDefinition ? 'unresolved'
+    : !url || !parsed || !method || methodUnknown || hint ? 'unresolved'
     : matches.length === 1 && !url.dynamic && !originUnconfirmed && !baseUncertain ? 'resolved' : 'partial';
-  let confidence: Confidence = resolution === 'resolved' ? 'high' : resolution === 'partial' && !originUnconfirmed && !baseUncertain ? 'medium' : 'low';
+  let confidence: Confidence = isWrapperDefinition ? 'low'
+    : resolution === 'resolved' ? 'high' : resolution === 'partial' && !originUnconfirmed && !baseUncertain ? 'medium' : 'low';
   // Scope rule: a call resolved only through a wrapper (or an imported axios instance) is never high confidence.
   if (via && confidence === 'high') confidence = 'medium';
-  const baseReason = !url ? 'URL expression could not be resolved statically'
+  const baseReason = isWrapperDefinition ? 'Call inside a recognized wrapper body; see call sites through this wrapper'
+    : !url ? 'URL expression could not be resolved statically'
     : !parsed ? (url.unknownPrefix ? 'URL starts with a value that could not be resolved statically' : 'URL or base could not be interpreted')
     : !method || methodUnknown ? 'HTTP method could not be resolved statically'
     : hint ? `${url.unknownPrefix ? 'URL base comes from a value' : 'axios baseURL'} that could not be resolved statically; path matches are review hints only`
@@ -456,7 +463,7 @@ function finalizeUse(input: FinalizeInput): { use: ConsumerUse; findings: Findin
     ...(via ? { via } : {}),
   };
   const findings: Finding[] = [];
-  for (const change of changes) {
+  for (const change of isWrapperDefinition ? [] : changes) {
     if (change.classification === 'compatible') continue;
     if (!matches.some(({ operation }) => operation.id === change.operationId || operation.operationId === change.operationId)) continue;
     findings.push({
@@ -539,6 +546,7 @@ interface WrapperSpec {
   fixedMethod?: HttpMethod;
   configForwardedParam?: ts.Symbol;
   bodyForwardedParam?: ts.Symbol;
+  callNode: ts.CallExpression;
 }
 
 interface AxiosInstanceSpec { client: Client; declRange: CodeRange }
@@ -547,6 +555,10 @@ interface WrapperIndex {
   byDeclSymbol: Map<ts.Symbol, WrapperSpec>;
   byFileAndName: Map<string, Map<string, WrapperSpec>>;
   instanceByFileAndName: Map<string, Map<string, AxiosInstanceSpec>>;
+  // The single recognized call inside each wrapper's own body: reported as its own low-confidence,
+  // unresolved use (today's behaviour for an unrecognized shape), never duplicated with findings
+  // from its resolved call sites (src/scan/WRAPPERS.md, "Duplicates").
+  internalCalls: Set<ts.CallExpression>;
 }
 
 function unwrapTrivial(node: ts.Expression): ts.Expression {
@@ -569,21 +581,21 @@ function analyzeWrapperUrl(node: ts.Expression, checker: ts.TypeChecker, paramSe
   const whole = paramRef(unwrapped, paramSet, checker);
   if (whole) return { kind: 'whole', param: whole };
   if (ts.isBinaryExpression(unwrapped) && unwrapped.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    // Only `base + param`: a bare leading identifier (`param + base`) is already treated elsewhere
+    // (evaluate()'s unknownPrefix case) as an unknown base, not a path variable — keep both conventions
+    // aligned rather than letting a wrapper reinterpret the same shape as resolvable.
     const rightParam = paramRef(unwrapped.right, paramSet, checker);
     if (rightParam) {
       const base = evaluate(unwrapped.left, checker);
       const name = (unwrapTrivial(unwrapped.right) as ts.Identifier).text;
       if (base && !base.dynamic) return { kind: 'join', template: base.value + `{${name}}`, param: rightParam, paramName: name };
     }
-    const leftParam = paramRef(unwrapped.left, paramSet, checker);
-    if (leftParam) {
-      const base = evaluate(unwrapped.right, checker);
-      const name = (unwrapTrivial(unwrapped.left) as ts.Identifier).text;
-      if (base && !base.dynamic) return { kind: 'join', template: `{${name}}` + base.value, param: leftParam, paramName: name };
-    }
     return undefined;
   }
   if (ts.isTemplateExpression(unwrapped)) {
+    // A parameter as the very first, unprefixed span (`${base}/x`) is the same unknown-base shape
+    // evaluate() already treats specially elsewhere; keep it unresolved rather than a path variable.
+    if (!unwrapped.head.text && paramRef(unwrapped.templateSpans[0]?.expression, paramSet, checker)) return undefined;
     let template = unwrapped.head.text;
     let param: ts.Symbol | undefined;
     let paramName = '';
@@ -607,7 +619,7 @@ function analyzeWrapperUrl(node: ts.Expression, checker: ts.TypeChecker, paramSe
   return undefined;
 }
 
-function analyzeWrapperCall(call: ts.CallExpression, checker: ts.TypeChecker, paramSet: Set<ts.Symbol>): Pick<WrapperSpec, 'client' | 'urlShape' | 'fixedMethod' | 'configForwardedParam' | 'bodyForwardedParam'> | undefined {
+function analyzeWrapperCall(call: ts.CallExpression, checker: ts.TypeChecker, paramSet: Set<ts.Symbol>): Pick<WrapperSpec, 'client' | 'urlShape' | 'fixedMethod' | 'configForwardedParam' | 'bodyForwardedParam' | 'callNode'> | undefined {
   const shape = extractCallShape(call, checker, undefined);
   if (!shape) return undefined;
   const { client, urlNode, config, configArgNode, body, method, methodUnknown } = shape;
@@ -628,7 +640,7 @@ function analyzeWrapperCall(call: ts.CallExpression, checker: ts.TypeChecker, pa
     const p = paramRef(unwrapJsonStringify(body), paramSet, checker);
     if (p) bodyForwardedParam = p;
   }
-  return { client, urlShape, fixedMethod, configForwardedParam, bodyForwardedParam };
+  return { client, urlShape, fixedMethod, configForwardedParam, bodyForwardedParam, callNode: call };
 }
 
 function hasModifier(node: ts.HasModifiers, kind: ts.SyntaxKind): boolean {
@@ -662,7 +674,7 @@ function detectWrapperFromFunction(fn: ts.FunctionDeclaration | ts.ArrowFunction
 }
 
 function buildWrapperIndex(sourceFiles: ts.SourceFile[], checker: ts.TypeChecker, resolvableLetsByFile: Map<ts.SourceFile, Set<ts.Symbol>>): WrapperIndex {
-  const index: WrapperIndex = { byDeclSymbol: new Map(), byFileAndName: new Map(), instanceByFileAndName: new Map() };
+  const index: WrapperIndex = { byDeclSymbol: new Map(), byFileAndName: new Map(), instanceByFileAndName: new Map(), internalCalls: new Set() };
   for (const source of sourceFiles) {
     resolvableLets = resolvableLetsByFile.get(source) ?? new Set();
     const wrapperNames = new Map<string, WrapperSpec>();
@@ -676,6 +688,7 @@ function buildWrapperIndex(sourceFiles: ts.SourceFile[], checker: ts.TypeChecker
           wrapperNames.set(declName, spec);
           if (isDefault) wrapperNames.set('default', spec);
           if (stmt.name) { const symbol = checker.getSymbolAtLocation(stmt.name); if (symbol) index.byDeclSymbol.set(symbol, spec); }
+          index.internalCalls.add(spec.callNode);
         }
         continue;
       }
@@ -689,6 +702,7 @@ function buildWrapperIndex(sourceFiles: ts.SourceFile[], checker: ts.TypeChecker
               wrapperNames.set(name, spec);
               const symbol = checker.getSymbolAtLocation(decl.name);
               if (symbol) index.byDeclSymbol.set(symbol, spec);
+              index.internalCalls.add(spec.callNode);
             }
             continue;
           }
@@ -701,7 +715,7 @@ function buildWrapperIndex(sourceFiles: ts.SourceFile[], checker: ts.TypeChecker
         const expr = stmt.expression;
         if (ts.isFunctionExpression(expr) || ts.isArrowFunction(expr)) {
           const spec = detectWrapperFromFunction(expr, 'default', expr.name ?? stmt, source, checker);
-          if (spec) wrapperNames.set('default', spec);
+          if (spec) { wrapperNames.set('default', spec); index.internalCalls.add(spec.callNode); }
         } else if (ts.isIdentifier(expr)) {
           const existing = wrapperNames.get(expr.text);
           if (existing) wrapperNames.set('default', existing);
@@ -994,6 +1008,7 @@ export async function scanRepository(options: ScanOptions): Promise<ScanResult> 
             config: (shape ?? resolvedVia!).config, body: (shape ?? resolvedVia!).body,
             uniqueOperations, apiBase, changes: options.changes,
             ...(resolvedVia ? { via: resolvedVia.via } : {}),
+            ...(shape && wrapperIndex.internalCalls.has(node) ? { isWrapperDefinition: true } : {}),
           });
           uses.push(use);
           callUses.set(node, use);
