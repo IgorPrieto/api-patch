@@ -2,14 +2,15 @@
 
 APIPatch compara dos definiciones OpenAPI, busca llamadas afectadas en un repositorio JavaScript/TypeScript y prepara cambios de código revisables. Funciona localmente, sin cuenta, inferencia ni servicio de pago. Un parche necesita correspondencias confirmadas en un archivo de migración; los casos inciertos quedan pendientes. Esta es una primera versión de alcance deliberadamente acotado.
 
-**Beta pública 0.1.0-beta.1.** Para probarla sin clonar el código, instala el paquete de la [GitHub Release](https://github.com/IgorPrieto/api-patch/releases/tag/v0.1.0-beta.1) con Node.js 24 o superior:
+**Beta pública 0.1.0-beta.2.** Para probarla sin clonar el código, descarga el paquete de la [GitHub Release](https://github.com/IgorPrieto/api-patch/releases/tag/v0.1.0-beta.2) e instálalo con Node.js 24 o superior:
 
 ```sh
-npm install -g https://github.com/IgorPrieto/api-patch/releases/download/v0.1.0-beta.1/apipatch-0.1.0-beta.1.tgz
+curl -fL -o apipatch-0.1.0-beta.2.tgz https://github.com/IgorPrieto/api-patch/releases/download/v0.1.0-beta.2/apipatch-0.1.0-beta.2.tgz
+npm install -g ./apipatch-0.1.0-beta.2.tgz
 apipatch demo --verify-level4
 ```
 
-También puedes instalar desde el código fuente con los pasos siguientes. La beta aún no está publicada en el registro npm. La [guía de prueba pública](docs/PUBLIC_BETA.md) explica cómo evaluar un repositorio propio y [enviar resultados](https://github.com/IgorPrieto/api-patch/issues/new/choose) sin compartir código privado. No se envía telemetría ni código a un servidor de APIPatch.
+La release incluye `SHA256SUMS.txt` para comprobar la descarga. También puedes instalar desde el código fuente con los pasos siguientes. La beta aún no está publicada en el registro npm. La [guía de prueba pública](docs/PUBLIC_BETA.md) explica cómo evaluar un repositorio propio y [enviar resultados](https://github.com/IgorPrieto/api-patch/issues/new/choose) sin compartir código privado. No se envía telemetría ni código a un servidor de APIPatch.
 
 ## Instalación
 

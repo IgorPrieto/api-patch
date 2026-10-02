@@ -1,11 +1,12 @@
-# APIPatch 0.1.0-beta.1
+# APIPatch 0.1.0-beta.2
 
-Primera beta pública de la CLI y el panel local. Compara OpenAPI 3.0/3.1 JSON/YAML, relaciona cambios con llamadas `fetch`/`axios` en JS/TS, genera parches a partir de mapeos explícitos y distingue propuesta, aplicación y niveles de verificación. Incluye una demo sintética antes/después y exportes JSON, Markdown y patch.
+Beta pública de la CLI y el panel local. Corrige la versión mostrada por `apipatch --version` para que coincida con el paquete. Compara OpenAPI 3.0/3.1 JSON/YAML, relaciona cambios con llamadas `fetch`/`axios` en JS/TS, genera parches a partir de mapeos explícitos y distingue propuesta, aplicación y niveles de verificación. Incluye una demo sintética antes/después y exportes JSON, Markdown y patch.
 
 Instalación desde el tarball adjunto a esta release:
 
 ```sh
-npm install -g https://github.com/IgorPrieto/api-patch/releases/download/v0.1.0-beta.1/apipatch-0.1.0-beta.1.tgz
+curl -fL -o apipatch-0.1.0-beta.2.tgz https://github.com/IgorPrieto/api-patch/releases/download/v0.1.0-beta.2/apipatch-0.1.0-beta.2.tgz
+npm install -g ./apipatch-0.1.0-beta.2.tgz
 apipatch demo --verify-level4
 ```
 

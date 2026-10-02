@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { Command } from 'commander';
@@ -13,7 +14,8 @@ import { verifyRepairPlan } from '../verify/index.js';
 
 type Common = { old: string; new: string; json?: boolean; out?: string; failOn?: string };
 const program = new Command();
-program.name('apipatch').description('OpenAPI changes, affected JS/TS consumers and reviewable repairs').version('0.1.0');
+const packageVersion = (JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string }).version;
+program.name('apipatch').description('OpenAPI changes, affected JS/TS consumers and reviewable repairs').version(packageVersion);
 
 async function save(file: string, text: string): Promise<void> {
   const target = resolve(file);

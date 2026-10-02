@@ -1,6 +1,6 @@
 {
   "name": "apipatch",
-  "version": "0.1.0-beta.1",
+  "version": "0.1.0-beta.2",
   "private": false,
   "description": "Local OpenAPI change analysis and verifiable consumer patches",
   "license": "MIT",
@@ -10,7 +10,13 @@
   },
   "homepage": "https://github.com/IgorPrieto/api-patch#readme",
   "bugs": "https://github.com/IgorPrieto/api-patch/issues",
-  "keywords": ["openapi", "api-migration", "breaking-changes", "typescript", "codemod"],
+  "keywords": [
+    "openapi",
+    "api-migration",
+    "breaking-changes",
+    "typescript",
+    "codemod"
+  ],
   "type": "module",
   "bin": {
     "apipatch": "./dist/cli/main.js"
