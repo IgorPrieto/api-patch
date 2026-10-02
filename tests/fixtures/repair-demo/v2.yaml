@@ -1,0 +1,60 @@
+openapi: 3.1.0
+info: { title: APIPatch repair fixture, version: 2.0.0 }
+servers:
+  - url: http://127.0.0.1:4010
+paths:
+  /members/{id}:
+    get:
+      operationId: getMember
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: lang, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Member
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, displayName]
+                properties: { id: { type: string }, displayName: { type: string } }
+  /users:
+    post:
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [displayName, tenantId]
+              properties: { displayName: { type: string }, tenantId: { type: string } }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { type: object, required: [id], properties: { id: { type: string } } }
+  /health:
+    get:
+      operationId: health
+      parameters:
+        - { name: verbose, in: query, required: true, schema: { type: string, enum: ['yes', 'no'] } }
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean } } }
+  /preferences:
+    get:
+      operationId: preferences
+      responses:
+        '200':
+          description: Preferences with composition requiring manual review
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { type: object, required: [mode], properties: { mode: { const: simple } } }
+                  - { type: object, required: [mode, flags], properties: { mode: { const: advanced }, flags: { type: array } } }

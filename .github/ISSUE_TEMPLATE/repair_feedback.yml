@@ -1,0 +1,43 @@
+name: Evaluación de un parche
+description: Explica si un parche propuesto fue útil, incorrecto o quedó pendiente.
+title: "[Parche] "
+body:
+  - type: markdown
+    attributes:
+      value: "No publiques diffs de clientes ni secretos sin permiso. Un resumen y una reproducción sintética bastan."
+  - type: input
+    id: version
+    attributes:
+      label: Versión de APIPatch y Node.js
+    validations:
+      required: true
+  - type: dropdown
+    id: decision
+    attributes:
+      label: Decisión del mantenedor
+      options:
+        - Aceptado sin cambios
+        - Aceptado con edición
+        - Rechazado
+        - Pendiente de revisión
+    validations:
+      required: true
+  - type: textarea
+    id: transformation
+    attributes:
+      label: Transformación propuesta y decisión de migración confirmada
+    validations:
+      required: true
+  - type: textarea
+    id: reason
+    attributes:
+      label: Motivo de aceptación, edición o rechazo
+    validations:
+      required: true
+  - type: textarea
+    id: checks
+    attributes:
+      label: Comprobaciones ejecutadas y estados
+      description: Distingue passed, failed, blocked y skipped.
+    validations:
+      required: false

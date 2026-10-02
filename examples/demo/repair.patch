@@ -1,0 +1,24 @@
+diff --git a/client.js b/client.js
+--- a/client.js
++++ b/client.js
+@@ -2,17 +2,17 @@
+ // same-origin, so the host (browser page or the demo's Node harness) supplies the origin.
+ 
+ export async function getUser(id, locale) {
+-  const response = await fetch(`/users/${id}?locale=${locale}`);
++  const response = await fetch(`/members/${id}?lang=${locale}`);
+   if (!response.ok) throw new Error(`getUser HTTP ${response.status}`);
+   const user = await response.json();
+-  return user.fullName;
++  return user.displayName;
+ }
+ 
+ export async function createUser(name) {
+   const response = await fetch('/users', {
+     method: 'POST',
+     headers: { 'content-type': 'application/json' },
+-    body: JSON.stringify({ name }),
++    body: JSON.stringify({ displayName: name, tenantId: 'tenant-demo' }),
+   });
+   if (!response.ok) throw new Error(`createUser HTTP ${response.status}`);
+   const created = await response.json();

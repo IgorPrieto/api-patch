@@ -1,0 +1,5 @@
+{
+  "name": "apipatch-demo-consumer",
+  "private": true,
+  "type": "module"
+}

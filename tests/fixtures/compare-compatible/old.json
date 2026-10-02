@@ -1,0 +1,29 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "Compare compatible fixture", "version": "1.0.0" },
+  "security": [{ "apiKey": [] }],
+  "paths": {
+    "/pets": {
+      "get": {
+        "operationId": "listPets",
+        "parameters": [{ "name": "limit", "in": "query", "schema": { "type": "integer", "maximum": 50 } }],
+        "responses": {
+          "200": { "description": "Pets", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Pet" } } } } }
+        }
+      },
+      "post": {
+        "operationId": "createPet",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["name", "kind"], "properties": { "name": { "type": "string", "maxLength": 20 }, "kind": { "type": "string", "enum": ["cat", "dog"] } } } } }
+        },
+        "responses": { "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Pet" } } } } }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Pet": { "type": "object", "required": ["id", "name", "status"], "properties": { "id": { "type": "string" }, "name": { "type": "string", "maxLength": 20 }, "status": { "type": "string", "enum": ["available", "sold", "pending"] } } }
+    }
+  }
+}

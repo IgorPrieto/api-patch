@@ -1,0 +1,14 @@
+# Synthetic fixture. Operation ids are ApiOperation.id values from the report snapshots:
+#   operation_0c18aa94f3dba7ba4b44e270 = GET /users/{id}   (old snapshot)
+#   operation_25aeeca43a7e0da11c3af7a6 = GET /members/{id} (new snapshot)
+#   operation_51c5dc335bf5e04397a10573 = POST /users       (both snapshots)
+schemaVersion: '1.0'
+allowedOrigins: ['http://127.0.0.1:4010']
+operations:
+  - { from: operation_0c18aa94f3dba7ba4b44e270, to: operation_25aeeca43a7e0da11c3af7a6 }
+renames:
+  - { operationId: operation_25aeeca43a7e0da11c3af7a6, location: query, from: locale, to: lang }
+  - { operationId: operation_25aeeca43a7e0da11c3af7a6, location: response, from: fullName, to: displayName }
+  - { operationId: operation_51c5dc335bf5e04397a10573, location: request, from: name, to: displayName }
+values:
+  - { operationId: operation_51c5dc335bf5e04397a10573, location: request, name: tenantId, value: tenant-demo }

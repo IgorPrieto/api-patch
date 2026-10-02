@@ -1,0 +1,80 @@
+openapi: 3.1.0
+info:
+  title: APIPatch synthetic directory API
+  version: 2.0.0
+servers:
+  # Same-origin API: the consumer uses relative URLs and the demo serves both on an ephemeral loopback port.
+  - url: /
+paths:
+  /members/{id}:
+    get:
+      operationId: getMember
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: lang
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Member
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, displayName]
+                properties:
+                  id: { type: string }
+                  displayName: { type: string }
+  /users:
+    post:
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [displayName, tenantId]
+              properties:
+                displayName: { type: string }
+                tenantId: { type: string }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { type: object, required: [id], properties: { id: { type: string } } }
+  /health:
+    get:
+      operationId: health
+      parameters:
+        - name: verbose
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema: { type: object, required: [ok], properties: { ok: { type: boolean }, version: { type: string } } }
+  /preferences:
+    get:
+      operationId: preferences
+      responses:
+        '200':
+          description: Preferences with composition requiring manual review
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required: [mode]
+                    properties: { mode: { const: simple } }
+                  - type: object
+                    required: [mode, flags]
+                    properties: { mode: { const: advanced }, flags: { type: array, items: { type: string } } }

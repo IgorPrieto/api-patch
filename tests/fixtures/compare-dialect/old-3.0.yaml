@@ -1,0 +1,23 @@
+openapi: 3.0.3
+info: { title: Compare dialect fixture, version: 1.0.0 }
+paths:
+  /readings:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                value: { type: number, minimum: 0, exclusiveMinimum: true }
+                comment: { type: string, nullable: true }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [unit]
+                properties:
+                  unit: { type: string }

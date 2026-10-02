@@ -1,0 +1,116 @@
+{
+  "schemaVersion": "1.0",
+  "id": "repair_2c81e35f9a97288dce41c46b",
+  "reportId": "report_f297f0f856738ec6bb25097e",
+  "migration": {
+    "schemaVersion": "1.0",
+    "allowedOrigins": [],
+    "operations": [
+      {
+        "from": "operation_0c18aa94f3dba7ba4b44e270",
+        "to": "operation_25aeeca43a7e0da11c3af7a6"
+      }
+    ],
+    "renames": [
+      {
+        "operationId": "operation_25aeeca43a7e0da11c3af7a6",
+        "location": "query",
+        "from": "locale",
+        "to": "lang"
+      },
+      {
+        "operationId": "operation_25aeeca43a7e0da11c3af7a6",
+        "location": "response",
+        "from": "fullName",
+        "to": "displayName"
+      },
+      {
+        "operationId": "operation_51c5dc335bf5e04397a10573",
+        "location": "request",
+        "from": "name",
+        "to": "displayName"
+      }
+    ],
+    "values": [
+      {
+        "operationId": "operation_51c5dc335bf5e04397a10573",
+        "location": "request",
+        "name": "tenantId",
+        "value": "tenant-demo"
+      }
+    ]
+  },
+  "applicationStatus": "proposed",
+  "files": [
+    {
+      "file": "client.js",
+      "originalHash": "894281c1baa2380c44cc906f6b95872190bc0f8defdd3fe1fed4de84d3e40784",
+      "edits": [
+        {
+          "start": 255,
+          "end": 267,
+          "oldText": "/users/${id}",
+          "newText": "/members/${id}",
+          "findingIds": [
+            "finding_396f0396255bb49f8d0892d3"
+          ],
+          "reason": "Route /users/{id} → /members/{id} (explicit operation mapping)"
+        },
+        {
+          "start": 268,
+          "end": 274,
+          "oldText": "locale",
+          "newText": "lang",
+          "findingIds": [
+            "finding_396f0396255bb49f8d0892d3"
+          ],
+          "reason": "Rename query parameter locale → lang (explicit rename mapping) [authorized by operation mapping operation_0c18aa94f3dba7ba4b44e270 → operation_25aeeca43a7e0da11c3af7a6: GET /users/{id} → /members/{id}]"
+        },
+        {
+          "start": 412,
+          "end": 420,
+          "oldText": "fullName",
+          "newText": "displayName",
+          "findingIds": [
+            "finding_396f0396255bb49f8d0892d3"
+          ],
+          "reason": "Rename response field access fullName → displayName (explicit rename mapping) [authorized by operation mapping operation_0c18aa94f3dba7ba4b44e270 → operation_25aeeca43a7e0da11c3af7a6: GET /users/{id} → /members/{id}]"
+        },
+        {
+          "start": 609,
+          "end": 613,
+          "oldText": "name",
+          "newText": "displayName: name, tenantId: 'tenant-demo'",
+          "findingIds": [
+            "finding_0022dcd4bbb4abd28649df3e",
+            "finding_1ec9cb6a2a53a35e83d943a8"
+          ],
+          "reason": "Rename request field name → displayName (explicit rename mapping); Add required request field tenantId = \"tenant-demo\" (explicit value mapping)"
+        }
+      ]
+    }
+  ],
+  "resolvedFindingIds": [
+    "finding_0022dcd4bbb4abd28649df3e",
+    "finding_1ec9cb6a2a53a35e83d943a8",
+    "finding_396f0396255bb49f8d0892d3"
+  ],
+  "partialFindingIds": [],
+  "pendingFindingIds": [
+    "finding_27ffbfa1d0ee79da3546e0f7",
+    "finding_310f1543a7240202c57aa732"
+  ],
+  "unifiedDiff": "diff --git a/client.js b/client.js\n--- a/client.js\n+++ b/client.js\n@@ -2,17 +2,17 @@\n // same-origin, so the host (browser page or the demo's Node harness) supplies the origin.\n \n export async function getUser(id, locale) {\n-  const response = await fetch(`/users/${id}?locale=${locale}`);\n+  const response = await fetch(`/members/${id}?lang=${locale}`);\n   if (!response.ok) throw new Error(`getUser HTTP ${response.status}`);\n   const user = await response.json();\n-  return user.fullName;\n+  return user.displayName;\n }\n \n export async function createUser(name) {\n   const response = await fetch('/users', {\n     method: 'POST',\n     headers: { 'content-type': 'application/json' },\n-    body: JSON.stringify({ name }),\n+    body: JSON.stringify({ displayName: name, tenantId: 'tenant-demo' }),\n   });\n   if (!response.ok) throw new Error(`createUser HTTP ${response.status}`);\n   const created = await response.json();\n",
+  "explanations": [
+    "Finding finding_0022dcd4bbb4abd28649df3e (client.js:12): resolved — Rename request field name → displayName (explicit rename mapping)",
+    "Finding finding_1ec9cb6a2a53a35e83d943a8 (client.js:12): resolved — Add required request field tenantId = \"tenant-demo\" (explicit value mapping)",
+    "Finding finding_27ffbfa1d0ee79da3546e0f7 (client.js:30): pending — ambiguous change requires manual review",
+    "Finding finding_310f1543a7240202c57aa732 (client.js:12): pending — ambiguous change requires manual review",
+    "Finding finding_396f0396255bb49f8d0892d3 (client.js:5): resolved — all destination obligations covered: operation mapping operation_0c18aa94f3dba7ba4b44e270 → operation_25aeeca43a7e0da11c3af7a6: GET /users/{id} → /members/{id}; Rename query parameter locale → lang (explicit rename mapping); Rename response field access fullName → displayName (explicit rename mapping)",
+    "Edit client.js@255-267: Route /users/{id} → /members/{id} (explicit operation mapping) [finding_396f0396255bb49f8d0892d3]",
+    "Edit client.js@268-274: Rename query parameter locale → lang (explicit rename mapping) [authorized by operation mapping operation_0c18aa94f3dba7ba4b44e270 → operation_25aeeca43a7e0da11c3af7a6: GET /users/{id} → /members/{id}] [finding_396f0396255bb49f8d0892d3]",
+    "Edit client.js@412-420: Rename response field access fullName → displayName (explicit rename mapping) [authorized by operation mapping operation_0c18aa94f3dba7ba4b44e270 → operation_25aeeca43a7e0da11c3af7a6: GET /users/{id} → /members/{id}] [finding_396f0396255bb49f8d0892d3]",
+    "Edit client.js@609-613: Rename request field name → displayName (explicit rename mapping); Add required request field tenantId = \"tenant-demo\" (explicit value mapping) [finding_0022dcd4bbb4abd28649df3e, finding_1ec9cb6a2a53a35e83d943a8]"
+  ],
+  "diagnostics": []
+}

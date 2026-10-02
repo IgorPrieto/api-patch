@@ -1,0 +1,60 @@
+openapi: 3.1.0
+info: { title: Compare directional fixture, version: 1.0.0 }
+paths:
+  /orders:
+    post:
+      operationId: createOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, priority, note]
+              properties:
+                status: { type: string, enum: [pending, paid] }
+                priority: { type: string, enum: [low, high] }
+                note: { type: string }
+                quantity: { type: integer }
+                code: { type: string, maxLength: 10 }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, state, total, legacy]
+                properties:
+                  id: { type: string }
+                  state: { type: string, enum: [open, closed] }
+                  total: { type: number }
+                  legacy: { type: string }
+                  count: { type: integer }
+                  label: { type: string, maxLength: 10 }
+                  nickname: { type: string }
+  /orders/{orderId}:
+    get:
+      operationId: getOrder
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Order, content: { application/json: { schema: { type: object } } } }
+    delete:
+      operationId: deleteOrder
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+      responses:
+        '204': { description: Deleted }
+  /items:
+    put:
+      operationId: saveItem
+      responses:
+        '200': { description: Saved }
+  /users/{id}:
+    get:
+      operationId: getUser
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: User }

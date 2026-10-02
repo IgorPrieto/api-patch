@@ -1,0 +1,260 @@
+{
+  "schemaVersion": "1.0",
+  "id": "report_a2f064c00506c5a512189b9c",
+  "inputs": {
+    "old": {
+      "file": "examples/public-case/old.yaml",
+      "digest": "931dcd5d7262928fc5ae42a5737537ef740a2b430f8cf0056f421caeae313130"
+    },
+    "new": {
+      "file": "examples/public-case/new.yaml",
+      "digest": "e792f27c81dbfcc0eeaef723ac6a26b7e594b42c97d621b1224c1d234983bd32"
+    },
+    "repository": "./examples/public-case"
+  },
+  "snapshots": {
+    "old": {
+      "schemaVersion": "1.0",
+      "id": "api_f2cbae5d2dd5f8f60eda060c",
+      "openapi": "3.1.0",
+      "digest": "931dcd5d7262928fc5ae42a5737537ef740a2b430f8cf0056f421caeae313130",
+      "documents": [
+        {
+          "file": "./examples/public-case/old.yaml",
+          "digest": "931dcd5d7262928fc5ae42a5737537ef740a2b430f8cf0056f421caeae313130"
+        }
+      ],
+      "operations": [
+        {
+          "id": "operation_effc81cb97a4219fab6e27d0",
+          "operationId": "listSecurityManagerTeams",
+          "method": "get",
+          "path": "/orgs/{org}/security-managers/teams",
+          "servers": [
+            "https://api.github.com"
+          ],
+          "parameters": [
+            {
+              "name": "org",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              },
+              "source": {
+                "file": "./examples/public-case/old.yaml",
+                "pointer": "/paths/~1orgs~1{org}~1security-managers~1teams/get/parameters/0"
+              }
+            }
+          ],
+          "responses": [
+            {
+              "status": "200",
+              "content": [],
+              "source": {
+                "file": "./examples/public-case/old.yaml",
+                "pointer": "/paths/~1orgs~1{org}~1security-managers~1teams/get/responses/200"
+              }
+            }
+          ],
+          "security": [],
+          "source": {
+            "file": "./examples/public-case/old.yaml",
+            "pointer": "/paths/~1orgs~1{org}~1security-managers~1teams/get"
+          }
+        }
+      ],
+      "references": [],
+      "diagnostics": []
+    },
+    "new": {
+      "schemaVersion": "1.0",
+      "id": "api_a0330c4d0daf9f33829a81ad",
+      "openapi": "3.1.0",
+      "digest": "e792f27c81dbfcc0eeaef723ac6a26b7e594b42c97d621b1224c1d234983bd32",
+      "documents": [
+        {
+          "file": "./examples/public-case/new.yaml",
+          "digest": "e792f27c81dbfcc0eeaef723ac6a26b7e594b42c97d621b1224c1d234983bd32"
+        }
+      ],
+      "operations": [
+        {
+          "id": "operation_8c7981857c9c2529c908f740",
+          "operationId": "listRoleTeams",
+          "method": "get",
+          "path": "/orgs/{org}/roles/{role_id}/teams",
+          "servers": [
+            "https://api.github.com"
+          ],
+          "parameters": [
+            {
+              "name": "org",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              },
+              "source": {
+                "file": "./examples/public-case/new.yaml",
+                "pointer": "/paths/~1orgs~1{org}~1roles~1{role_id}~1teams/get/parameters/0"
+              }
+            },
+            {
+              "name": "role_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer"
+              },
+              "source": {
+                "file": "./examples/public-case/new.yaml",
+                "pointer": "/paths/~1orgs~1{org}~1roles~1{role_id}~1teams/get/parameters/1"
+              }
+            }
+          ],
+          "responses": [
+            {
+              "status": "200",
+              "content": [],
+              "source": {
+                "file": "./examples/public-case/new.yaml",
+                "pointer": "/paths/~1orgs~1{org}~1roles~1{role_id}~1teams/get/responses/200"
+              }
+            }
+          ],
+          "security": [],
+          "source": {
+            "file": "./examples/public-case/new.yaml",
+            "pointer": "/paths/~1orgs~1{org}~1roles~1{role_id}~1teams/get"
+          }
+        }
+      ],
+      "references": [],
+      "diagnostics": []
+    }
+  },
+  "changes": [
+    {
+      "id": "change_27275c7951772d7f53495bb6",
+      "operationId": "operation_8c7981857c9c2529c908f740",
+      "method": "get",
+      "path": "/orgs/{org}/roles/{role_id}/teams",
+      "location": "path",
+      "rule": "operation.added",
+      "direction": "operation",
+      "classification": "compatible",
+      "explanation": "New operation GET /orgs/{org}/roles/{role_id}/teams.",
+      "after": {
+        "file": "./examples/public-case/new.yaml",
+        "pointer": "/paths/~1orgs~1{org}~1roles~1{role_id}~1teams/get"
+      },
+      "evidence": [
+        {
+          "kind": "schema",
+          "message": "New contract: see source",
+          "source": {
+            "file": "./examples/public-case/new.yaml",
+            "pointer": "/paths/~1orgs~1{org}~1roles~1{role_id}~1teams/get"
+          }
+        }
+      ]
+    },
+    {
+      "id": "change_774f43a7344c58f48a2dafed",
+      "operationId": "operation_effc81cb97a4219fab6e27d0",
+      "method": "get",
+      "path": "/orgs/{org}/security-managers/teams",
+      "location": "path",
+      "rule": "operation.removed",
+      "direction": "operation",
+      "classification": "breaking",
+      "explanation": "Operation GET /orgs/{org}/security-managers/teams no longer exists in the new contract; requests to it may fail.",
+      "before": {
+        "file": "./examples/public-case/old.yaml",
+        "pointer": "/paths/~1orgs~1{org}~1security-managers~1teams/get"
+      },
+      "evidence": [
+        {
+          "kind": "schema",
+          "message": "Old contract: see source",
+          "source": {
+            "file": "./examples/public-case/old.yaml",
+            "pointer": "/paths/~1orgs~1{org}~1security-managers~1teams/get"
+          }
+        }
+      ]
+    }
+  ],
+  "uses": [
+    {
+      "id": "use_adf67f25588e10d774b33804",
+      "file": "consumer.js",
+      "fileHash": "2d16d325c50cd6a3478eb9a3632e9374f6020c967f275b2155928ce3ac2a174b",
+      "range": {
+        "start": 152,
+        "end": 224,
+        "line": 3,
+        "column": 26
+      },
+      "client": "fetch",
+      "urlExpression": "[source expression redacted; inspect file and range]",
+      "origin": "https://api.github.com",
+      "method": "get",
+      "operationIds": [
+        "operation_effc81cb97a4219fab6e27d0"
+      ],
+      "bindings": [],
+      "resolution": "resolved",
+      "confidence": "high",
+      "reason": "Literal or immutable URL, method and operation matched"
+    }
+  ],
+  "findings": [
+    {
+      "id": "finding_26e36f2af819d70c195e4940",
+      "changeId": "change_774f43a7344c58f48a2dafed",
+      "useId": "use_adf67f25588e10d774b33804",
+      "consequence": "Potential break: Operation GET /orgs/{org}/security-managers/teams no longer exists in the new contract; requests to it may fail.",
+      "evidence": [
+        {
+          "kind": "ast",
+          "message": "HTTP get call; Literal or immutable URL, method and operation matched",
+          "file": "consumer.js",
+          "range": {
+            "start": 152,
+            "end": 224,
+            "line": 3,
+            "column": 26
+          }
+        },
+        {
+          "kind": "schema",
+          "message": "Old contract: see source",
+          "source": {
+            "file": "./examples/public-case/old.yaml",
+            "pointer": "/paths/~1orgs~1{org}~1security-managers~1teams/get"
+          }
+        }
+      ],
+      "confidence": "high",
+      "reviewStatus": "pending"
+    }
+  ],
+  "repairs": [],
+  "verification": [],
+  "limitations": [
+    "Schema comparison covers a documented subset of JSON Schema; composition (allOf/anyOf/oneOf/not/if-then-else/discriminator) and uninterpreted keywords are reported as ambiguous when they change, never as safe.",
+    "Operations are matched by HTTP method and path template; renamed operations, parameters and properties are reported as removal plus addition and never inferred from similar names.",
+    "Security compares effective requirement names and scopes only; security scheme definitions (type, location, flows) are not part of the snapshot and are not compared.",
+    "Parameter style/explode, encoding, response headers, links and callbacks are not part of the snapshot and are not compared.",
+    "Evidence pointers inside schemas are relative to the normalized (dereferenced) schema; source locations point to the enclosing parameter, media type, response or operation.",
+    "Recursive schema back-references are compared by reference text only.",
+    "OpenAPI 3.0 nullable and boolean exclusiveMinimum/exclusiveMaximum are normalized against 3.1 type unions and numeric bounds; other dialect differences (for example nullable inside a 3.1 document) are treated as uninterpreted keywords.",
+    "Several media type keys that collapse after removing parameters are reported as ambiguous instead of silently selecting one schema.",
+    "Static analysis only: unknown wrappers, computed properties, mutable values and complex data flow require review.",
+    "Response properties are traced only through immutable direct response variables and fetch json() variables.",
+    "Exported URL expressions and scanned values are redacted; inspect the local source at the reported coordinates."
+  ],
+  "diagnostics": []
+}

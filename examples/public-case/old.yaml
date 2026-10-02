@@ -1,0 +1,19 @@
+# Reconstructed minimal fixture from GitHub changelog, not an official OpenAPI export.
+openapi: 3.1.0
+info:
+  title: Reconstructed GitHub security manager endpoint (before retirement)
+  version: synthetic-before
+servers:
+  - url: https://api.github.com
+paths:
+  /orgs/{org}/security-managers/teams:
+    get:
+      operationId: listSecurityManagerTeams
+      parameters:
+        - name: org
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Successful response; schema intentionally unspecified

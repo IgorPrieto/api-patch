@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>APIPatch — panel local</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/app.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Saltar al contenido</a>
+  <header class="top">
+    <h1>APIPatch <span class="sub">panel local de revisión</span></h1>
+    <p id="workspace" class="muted">Conectando con el servidor local…</p>
+  </header>
+  <div id="session-error" class="alert" role="alert" hidden></div>
+
+  <main id="main">
+    <section aria-labelledby="inputs-title" class="card">
+      <h2 id="inputs-title">1. Entradas</h2>
+      <p class="muted">Las rutas son relativas al workspace autorizado al arrancar <code>apipatch ui</code>. El navegador no tiene acceso a otras carpetas: escribe una ruta relativa o usa «Explorar…».</p>
+      <form id="analyze-form" novalidate>
+        <div class="field">
+          <label for="old">Documento OpenAPI anterior</label>
+          <div class="row">
+            <input id="old" name="old" type="text" required autocomplete="off" spellcheck="false" placeholder="specs/v1.yaml" aria-describedby="old-help">
+            <button type="button" class="secondary" data-browse="old" data-mode="document">Explorar…</button>
+          </div>
+          <small id="old-help" class="muted">YAML o JSON, OpenAPI 3.0/3.1.</small>
+        </div>
+        <div class="field">
+          <label for="new">Documento OpenAPI nuevo</label>
+          <div class="row">
+            <input id="new" name="new" type="text" required autocomplete="off" spellcheck="false" placeholder="specs/v2.yaml">
+            <button type="button" class="secondary" data-browse="new" data-mode="document">Explorar…</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="repository">Repositorio consumidor (carpeta)</label>
+          <div class="row">
+            <input id="repository" name="repository" type="text" autocomplete="off" spellcheck="false" placeholder=". (raíz del workspace)" aria-describedby="repo-help">
+            <button type="button" class="secondary" data-browse="repository" data-mode="directory">Explorar…</button>
+          </div>
+          <small id="repo-help" class="muted">Vacío o «.» analiza la raíz del workspace. Solo análisis estático: no se ejecutan scripts del repositorio.</small>
+        </div>
+        <div class="field">
+          <label for="baseUrl">Base URL conocida de la API (opcional)</label>
+          <input id="baseUrl" name="baseUrl" type="url" autocomplete="off" spellcheck="false" placeholder="https://api.example.com">
+        </div>
+        <div class="field">
+          <label for="migration">Migración confirmada (opcional)</label>
+          <div class="row">
+            <input id="migration" name="migration" type="text" autocomplete="off" spellcheck="false" placeholder="migration.yaml" aria-describedby="migration-help">
+            <button type="button" class="secondary" data-browse="migration" data-mode="document">Explorar…</button>
+          </div>
+          <small id="migration-help" class="muted">Sin migración se analizan cambios y hallazgos, pero no se propone ningún parche.</small>
+        </div>
+        <div class="row actions">
+          <button id="analyze" type="submit">Analizar</button>
+          <span id="analyze-status" class="status" role="status" aria-live="polite"></span>
+        </div>
+        <div id="form-error" class="alert" role="alert" hidden></div>
+      </form>
+    </section>
+
+    <section id="results" aria-labelledby="results-title" class="card" hidden>
+      <h2 id="results-title" tabindex="-1">2. Resultados</h2>
+      <p id="run-inputs" class="muted"></p>
+      <dl id="summary" class="summary"></dl>
+      <div id="plan-error" class="alert" role="alert" hidden></div>
+      <div role="tablist" aria-label="Secciones de resultados" class="tabs" id="tabs">
+        <button role="tab" id="tab-changes" aria-controls="panel-changes" aria-selected="true">Cambios</button>
+        <button role="tab" id="tab-files" aria-controls="panel-files" aria-selected="false" tabindex="-1">Archivos y hallazgos</button>
+        <button role="tab" id="tab-diff" aria-controls="panel-diff" aria-selected="false" tabindex="-1">Diff</button>
+        <button role="tab" id="tab-verify" aria-controls="panel-verify" aria-selected="false" tabindex="-1">Verificación y pendientes</button>
+        <button role="tab" id="tab-limits" aria-controls="panel-limits" aria-selected="false" tabindex="-1">Límites y diagnósticos</button>
+      </div>
+      <div role="tabpanel" id="panel-changes" aria-labelledby="tab-changes" tabindex="0">
+        <div class="row">
+          <label for="change-filter">Filtrar por clasificación</label>
+          <select id="change-filter">
+            <option value="">Todas</option>
+            <option value="breaking">Incompatibles</option>
+            <option value="ambiguous">Ambiguas</option>
+            <option value="compatible">Compatibles</option>
+          </select>
+        </div>
+        <div id="changes"></div>
+      </div>
+      <div role="tabpanel" id="panel-files" aria-labelledby="tab-files" tabindex="0" hidden><div id="files"></div></div>
+      <div role="tabpanel" id="panel-diff" aria-labelledby="tab-diff" tabindex="0" hidden><div id="diff"></div></div>
+      <div role="tabpanel" id="panel-verify" aria-labelledby="tab-verify" tabindex="0" hidden><div id="verification"></div></div>
+      <div role="tabpanel" id="panel-limits" aria-labelledby="tab-limits" tabindex="0" hidden><div id="limits"></div></div>
+    </section>
+
+    <section id="actions" aria-labelledby="actions-title" class="card" hidden>
+      <h2 id="actions-title">3. Exportar y aplicar</h2>
+      <div class="row" id="exports">
+        <button type="button" class="secondary" data-export="json">Exportar JSON</button>
+        <button type="button" class="secondary" data-export="markdown">Exportar Markdown</button>
+        <button type="button" class="secondary" data-export="patch" id="export-patch">Exportar patch</button>
+        <span id="export-status" class="status" role="status" aria-live="polite"></span>
+      </div>
+      <div id="apply"></div>
+    </section>
+  </main>
+
+  <dialog id="explorer" aria-labelledby="explorer-title">
+    <h2 id="explorer-title">Explorador del workspace</h2>
+    <p class="muted">Ruta actual: <code id="explorer-path">.</code></p>
+    <div id="explorer-error" class="alert" role="alert" hidden></div>
+    <p id="explorer-status" class="status" role="status" aria-live="polite"></p>
+    <ul id="explorer-list" class="explorer-list"></ul>
+    <div class="row actions">
+      <button type="button" id="explorer-up" class="secondary">Subir un nivel</button>
+      <button type="button" id="explorer-choose-dir">Usar esta carpeta</button>
+      <button type="button" id="explorer-close" class="secondary">Cerrar</button>
+    </div>
+  </dialog>
+</body>
+</html>

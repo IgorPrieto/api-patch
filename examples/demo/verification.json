@@ -1,0 +1,124 @@
+{
+  "schemaVersion": "1.0",
+  "planId": "repair_2c81e35f9a97288dce41c46b",
+  "results": [
+    {
+      "id": "verification_29b81b29b3f0c66530b01692",
+      "level": 1,
+      "status": "passed",
+      "properties": [
+        "Plan structure",
+        "Safe relative paths",
+        "File hashes",
+        "Non-overlapping edits",
+        "Edit contents"
+      ],
+      "evidence": [
+        {
+          "kind": "check",
+          "message": "Validated 1 patched file(s) against repository content"
+        }
+      ],
+      "durationMs": 1,
+      "environment": {
+        "node": "v26.5.0",
+        "typescript": "6.0.3",
+        "platform": "linux"
+      }
+    },
+    {
+      "id": "verification_24c47bdcfb776868148af3e9",
+      "level": 2,
+      "status": "passed",
+      "properties": [
+        "Transformed JavaScript/TypeScript syntax in isolated copy"
+      ],
+      "evidence": [],
+      "durationMs": 10,
+      "environment": {
+        "node": "v26.5.0",
+        "typescript": "6.0.3",
+        "platform": "linux"
+      }
+    },
+    {
+      "id": "verification_38b992a3a26e29b27fee3a7f",
+      "level": 3,
+      "status": "blocked",
+      "properties": [
+        "TypeScript 6 compiler API, isolated patched files, no repository tsconfig or plugins",
+        "New diagnostics compared with original source"
+      ],
+      "evidence": [],
+      "durationMs": 540,
+      "environment": {
+        "node": "v26.5.0",
+        "typescript": "6.0.3",
+        "platform": "linux"
+      },
+      "reason": "0 new unresolved reference(s); 3 pre-existing error(s); isolated check incomplete"
+    },
+    {
+      "id": "verification_83f17f6114f9fdfa6376938a",
+      "level": 4,
+      "status": "passed",
+      "properties": [
+        "get-user: getUser reaches the user operation with its locale query and reads the user name from the response",
+        "create-user: createUser sends a request body the API accepts and reads the created id",
+        "health: health keeps working across a compatible change (optional query, added response field)"
+      ],
+      "evidence": [
+        {
+          "kind": "mapping",
+          "file": "client.js",
+          "message": "Module client.js sha256 894281c1baa2380c44cc906f6b95872190bc0f8defdd3fe1fed4de84d3e40784 matches demo/repository/client.js; 4/4 edit(s) taken from the APIPatch-proposed demo plan; executed from a temporary proposed copy"
+        },
+        {
+          "kind": "check",
+          "file": "client.js",
+          "message": "[passed] get-user (getUser): expected \"Ada Lovelace\", actual \"Ada Lovelace\"; requests: GET /members/42?lang=en → 200"
+        },
+        {
+          "kind": "check",
+          "file": "client.js",
+          "message": "[passed] create-user (createUser): expected \"user-42\", actual \"user-42\"; requests: POST /users → 201"
+        },
+        {
+          "kind": "check",
+          "file": "client.js",
+          "message": "[passed] health (health): expected true, actual true; requests: GET /health → 200"
+        },
+        {
+          "kind": "check",
+          "file": "client.js",
+          "message": "[pending, unsupported; observed failed] preferences (preferences): expected \"light\", actual undefined; requests: GET /preferences → 200; v2 response is an ambiguous oneOf (mode simple|advanced) with no explicit mapping; left pending for manual review"
+        }
+      ],
+      "durationMs": 472,
+      "environment": {
+        "node": "v26.5.0",
+        "typescript": "6.0.3",
+        "platform": "linux"
+      },
+      "reason": "3/3 supported contract case(s) passed against v2; preferences pending (unsupported, not counted)"
+    },
+    {
+      "id": "verification_34f8d210e9f2bb0a20b1a854",
+      "level": 5,
+      "status": "skipped",
+      "properties": [],
+      "evidence": [],
+      "durationMs": 1,
+      "environment": {
+        "node": "v26.5.0",
+        "typescript": "6.0.3",
+        "platform": "linux"
+      },
+      "reason": "No explicit command authorization supplied"
+    }
+  ],
+  "limitations": [
+    "Level 3 cannot certify types with unresolved or pre-existing errors in isolated patched files.",
+    "Level 4 executed only the synthetic demo contract: 4 case(s) of demo/repository/client.js against the in-process v2 API; unsupported cases (preferences) stay pending and are not counted."
+  ]
+}

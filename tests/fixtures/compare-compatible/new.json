@@ -1,0 +1,41 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "Compare compatible fixture", "version": "1.1.0", "description": "Only backwards compatible changes" },
+  "security": [{ "apiKey": [] }, { "bearer": [] }],
+  "paths": {
+    "/pets": {
+      "get": {
+        "operationId": "listPets",
+        "description": "Now with optional filters",
+        "parameters": [
+          { "name": "limit", "in": "query", "description": "Page size", "schema": { "type": "integer", "maximum": 100 } },
+          { "name": "kind", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Pets", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Pet", "description": "A pet" } } } } },
+          "400": { "description": "Bad filter", "content": { "application/json": { "schema": { "type": "object" } } } }
+        }
+      },
+      "post": {
+        "operationId": "createPet",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["name"], "properties": { "name": { "type": "string", "maxLength": 40 }, "kind": { "type": "string", "enum": ["cat", "dog", "bird"] }, "tag": { "type": "string" } } } } }
+        },
+        "responses": { "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Pet" } } } } }
+      }
+    },
+    "/pets/{petId}": {
+      "get": {
+        "operationId": "getPet",
+        "parameters": [{ "name": "petId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Pet", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Pet" } } } } }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Pet": { "type": "object", "description": "A pet", "required": ["id", "name", "status", "createdAt"], "properties": { "id": { "type": "string" }, "name": { "type": "string", "maxLength": 10 }, "status": { "type": "string", "enum": ["available", "sold"] }, "createdAt": { "type": "string" }, "color": { "type": "string" } } }
+    }
+  }
+}

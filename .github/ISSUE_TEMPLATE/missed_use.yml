@@ -1,0 +1,36 @@
+name: Llamada afectada no detectada
+description: El análisis pasó por alto una llamada que debería relacionar con un cambio de API.
+title: "[Omisión] "
+body:
+  - type: markdown
+    attributes:
+      value: "Comparte solo un ejemplo mínimo y sintético. Consulta la matriz de compatibilidad antes de informar un patrón fuera de alcance."
+  - type: input
+    id: version
+    attributes:
+      label: Versión de APIPatch y Node.js
+    validations:
+      required: true
+  - type: dropdown
+    id: client
+    attributes:
+      label: Cliente HTTP
+      options:
+        - fetch
+        - axios
+        - otro
+    validations:
+      required: true
+  - type: textarea
+    id: synthetic
+    attributes:
+      label: OpenAPI y llamada mínimos sintéticos
+      description: Explica el cambio y pega solo material que puedes publicar.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Resultado observado y asociación esperada
+    validations:
+      required: true

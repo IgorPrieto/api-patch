@@ -1,0 +1,1227 @@
+{
+  "schemaVersion": "1.0",
+  "id": "report_f297f0f856738ec6bb25097e",
+  "inputs": {
+    "old": {
+      "file": "demo/specs/v1.yaml",
+      "digest": "af1b0bc8ecdd38de2d77f78c3bb62c73718efb12df443d90d06406f0acd372b7"
+    },
+    "new": {
+      "file": "demo/specs/v2.yaml",
+      "digest": "0ee93021e3a85a87944135d3f86ed6b0bed6417518f294e245616b80f2520588"
+    },
+    "repository": "./demo/repository"
+  },
+  "snapshots": {
+    "old": {
+      "schemaVersion": "1.0",
+      "id": "api_e21044b1f1f03bf5cd248526",
+      "openapi": "3.1.0",
+      "digest": "af1b0bc8ecdd38de2d77f78c3bb62c73718efb12df443d90d06406f0acd372b7",
+      "documents": [
+        {
+          "file": "./demo/specs/v1.yaml",
+          "digest": "af1b0bc8ecdd38de2d77f78c3bb62c73718efb12df443d90d06406f0acd372b7"
+        }
+      ],
+      "operations": [
+        {
+          "id": "operation_4c54f1158345328ef9118e33",
+          "operationId": "health",
+          "method": "get",
+          "path": "/health",
+          "servers": [
+            "/"
+          ],
+          "parameters": [],
+          "responses": [
+            {
+              "status": "200",
+              "content": [
+                {
+                  "mediaType": "application/json",
+                  "schema": {
+                    "type": "object",
+                    "required": [
+                      "ok"
+                    ],
+                    "properties": {
+                      "ok": {
+                        "type": "boolean"
+                      }
+                    }
+                  },
+                  "source": {
+                    "file": "./demo/specs/v1.yaml",
+                    "pointer": "/paths/~1health/get/responses/200/content/application~1json"
+                  }
+                }
+              ],
+              "source": {
+                "file": "./demo/specs/v1.yaml",
+                "pointer": "/paths/~1health/get/responses/200"
+              }
+            }
+          ],
+          "security": [],
+          "source": {
+            "file": "./demo/specs/v1.yaml",
+            "pointer": "/paths/~1health/get"
+          }
+        },
+        {
+          "id": "operation_0c924c2c1dc8bfe958031936",
+          "operationId": "preferences",
+          "method": "get",
+          "path": "/preferences",
+          "servers": [
+            "/"
+          ],
+          "parameters": [],
+          "responses": [
+            {
+              "status": "200",
+              "content": [
+                {
+                  "mediaType": "application/json",
+                  "schema": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "source": {
+                    "file": "./demo/specs/v1.yaml",
+                    "pointer": "/paths/~1preferences/get/responses/200/content/application~1json"
+                  }
+                }
+              ],
+              "source": {
+                "file": "./demo/specs/v1.yaml",
+                "pointer": "/paths/~1preferences/get/responses/200"
+              }
+            }
+          ],
+          "security": [],
+          "source": {
+            "file": "./demo/specs/v1.yaml",
+            "pointer": "/paths/~1preferences/get"
+          }
+        },
+        {
+          "id": "operation_51c5dc335bf5e04397a10573",
+          "operationId": "createUser",
+          "method": "post",
+          "path": "/users",
+          "servers": [
+            "/"
+          ],
+          "parameters": [],
+          "requestBody": {
+            "required": true,
+            "content": [
+              {
+                "mediaType": "application/json",
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "name"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "source": {
+                  "file": "./demo/specs/v1.yaml",
+                  "pointer": "/paths/~1users/post/requestBody/content/application~1json"
+                }
+              }
+            ],
+            "source": {
+              "file": "./demo/specs/v1.yaml",
+              "pointer": "/paths/~1users/post/requestBody"
+            }
+          },
+          "responses": [
+            {
+              "status": "201",
+              "content": [
+                {
+                  "mediaType": "application/json",
+                  "schema": {
+                    "type": "object",
+                    "required": [
+                      "id"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "source": {
+                    "file": "./demo/specs/v1.yaml",
+                    "pointer": "/paths/~1users/post/responses/201/content/application~1json"
+                  }
+                }
+              ],
+              "source": {
+                "file": "./demo/specs/v1.yaml",
+                "pointer": "/paths/~1users/post/responses/201"
+              }
+            }
+          ],
+          "security": [],
+          "source": {
+            "file": "./demo/specs/v1.yaml",
+            "pointer": "/paths/~1users/post"
+          }
+        },
+        {
+          "id": "operation_0c18aa94f3dba7ba4b44e270",
+          "operationId": "getUser",
+          "method": "get",
+          "path": "/users/{id}",
+          "servers": [
+            "/"
+          ],
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              },
+              "source": {
+                "file": "./demo/specs/v1.yaml",
+                "pointer": "/paths/~1users~1{id}/get/parameters/0"
+              }
+            },
+            {
+              "name": "locale",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "string"
+              },
+              "source": {
+                "file": "./demo/specs/v1.yaml",
+                "pointer": "/paths/~1users~1{id}/get/parameters/1"
+              }
+            }
+          ],
+          "responses": [
+            {
+              "status": "200",
+              "content": [
+                {
+                  "mediaType": "application/json",
+                  "schema": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "fullName"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "fullName": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "source": {
+                    "file": "./demo/specs/v1.yaml",
+                    "pointer": "/paths/~1users~1{id}/get/responses/200/content/application~1json"
+                  }
+                }
+              ],
+              "source": {
+                "file": "./demo/specs/v1.yaml",
+                "pointer": "/paths/~1users~1{id}/get/responses/200"
+              }
+            }
+          ],
+          "security": [],
+          "source": {
+            "file": "./demo/specs/v1.yaml",
+            "pointer": "/paths/~1users~1{id}/get"
+          }
+        }
+      ],
+      "references": [],
+      "diagnostics": []
+    },
+    "new": {
+      "schemaVersion": "1.0",
+      "id": "api_aca63eec836abfb4471b6c51",
+      "openapi": "3.1.0",
+      "digest": "0ee93021e3a85a87944135d3f86ed6b0bed6417518f294e245616b80f2520588",
+      "documents": [
+        {
+          "file": "./demo/specs/v2.yaml",
+          "digest": "0ee93021e3a85a87944135d3f86ed6b0bed6417518f294e245616b80f2520588"
+        }
+      ],
+      "operations": [
+        {
+          "id": "operation_4c54f1158345328ef9118e33",
+          "operationId": "health",
+          "method": "get",
+          "path": "/health",
+          "servers": [
+            "/"
+          ],
+          "parameters": [
+            {
+              "name": "verbose",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean"
+              },
+              "source": {
+                "file": "./demo/specs/v2.yaml",
+                "pointer": "/paths/~1health/get/parameters/0"
+              }
+            }
+          ],
+          "responses": [
+            {
+              "status": "200",
+              "content": [
+                {
+                  "mediaType": "application/json",
+                  "schema": {
+                    "type": "object",
+                    "required": [
+                      "ok"
+                    ],
+                    "properties": {
+                      "ok": {
+                        "type": "boolean"
+                      },
+                      "version": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "source": {
+                    "file": "./demo/specs/v2.yaml",
+                    "pointer": "/paths/~1health/get/responses/200/content/application~1json"
+                  }
+                }
+              ],
+              "source": {
+                "file": "./demo/specs/v2.yaml",
+                "pointer": "/paths/~1health/get/responses/200"
+              }
+            }
+          ],
+          "security": [],
+          "source": {
+            "file": "./demo/specs/v2.yaml",
+            "pointer": "/paths/~1health/get"
+          }
+        },
+        {
+          "id": "operation_25aeeca43a7e0da11c3af7a6",
+          "operationId": "getMember",
+          "method": "get",
+          "path": "/members/{id}",
+          "servers": [
+            "/"
+          ],
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              },
+              "source": {
+                "file": "./demo/specs/v2.yaml",
+                "pointer": "/paths/~1members~1{id}/get/parameters/0"
+              }
+            },
+            {
+              "name": "lang",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "string"
+              },
+              "source": {
+                "file": "./demo/specs/v2.yaml",
+                "pointer": "/paths/~1members~1{id}/get/parameters/1"
+              }
+            }
+          ],
+          "responses": [
+            {
+              "status": "200",
+              "content": [
+                {
+                  "mediaType": "application/json",
+                  "schema": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "displayName"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "displayName": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "source": {
+                    "file": "./demo/specs/v2.yaml",
+                    "pointer": "/paths/~1members~1{id}/get/responses/200/content/application~1json"
+                  }
+                }
+              ],
+              "source": {
+                "file": "./demo/specs/v2.yaml",
+                "pointer": "/paths/~1members~1{id}/get/responses/200"
+              }
+            }
+          ],
+          "security": [],
+          "source": {
+            "file": "./demo/specs/v2.yaml",
+            "pointer": "/paths/~1members~1{id}/get"
+          }
+        },
+        {
+          "id": "operation_0c924c2c1dc8bfe958031936",
+          "operationId": "preferences",
+          "method": "get",
+          "path": "/preferences",
+          "servers": [
+            "/"
+          ],
+          "parameters": [],
+          "responses": [
+            {
+              "status": "200",
+              "content": [
+                {
+                  "mediaType": "application/json",
+                  "schema": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "required": [
+                          "mode"
+                        ],
+                        "properties": {
+                          "mode": {
+                            "const": "simple"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "mode",
+                          "flags"
+                        ],
+                        "properties": {
+                          "mode": {
+                            "const": "advanced"
+                          },
+                          "flags": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "source": {
+                    "file": "./demo/specs/v2.yaml",
+                    "pointer": "/paths/~1preferences/get/responses/200/content/application~1json"
+                  }
+                }
+              ],
+              "source": {
+                "file": "./demo/specs/v2.yaml",
+                "pointer": "/paths/~1preferences/get/responses/200"
+              }
+            }
+          ],
+          "security": [],
+          "source": {
+            "file": "./demo/specs/v2.yaml",
+            "pointer": "/paths/~1preferences/get"
+          }
+        },
+        {
+          "id": "operation_51c5dc335bf5e04397a10573",
+          "operationId": "createUser",
+          "method": "post",
+          "path": "/users",
+          "servers": [
+            "/"
+          ],
+          "parameters": [],
+          "requestBody": {
+            "required": true,
+            "content": [
+              {
+                "mediaType": "application/json",
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "displayName",
+                    "tenantId"
+                  ],
+                  "properties": {
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "tenantId": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "source": {
+                  "file": "./demo/specs/v2.yaml",
+                  "pointer": "/paths/~1users/post/requestBody/content/application~1json"
+                }
+              }
+            ],
+            "source": {
+              "file": "./demo/specs/v2.yaml",
+              "pointer": "/paths/~1users/post/requestBody"
+            }
+          },
+          "responses": [
+            {
+              "status": "201",
+              "content": [
+                {
+                  "mediaType": "application/json",
+                  "schema": {
+                    "type": "object",
+                    "required": [
+                      "id"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "source": {
+                    "file": "./demo/specs/v2.yaml",
+                    "pointer": "/paths/~1users/post/responses/201/content/application~1json"
+                  }
+                }
+              ],
+              "source": {
+                "file": "./demo/specs/v2.yaml",
+                "pointer": "/paths/~1users/post/responses/201"
+              }
+            }
+          ],
+          "security": [],
+          "source": {
+            "file": "./demo/specs/v2.yaml",
+            "pointer": "/paths/~1users/post"
+          }
+        }
+      ],
+      "references": [],
+      "diagnostics": []
+    }
+  },
+  "changes": [
+    {
+      "id": "change_5f137296f9a79a4411d5834e",
+      "operationId": "operation_4c54f1158345328ef9118e33",
+      "method": "get",
+      "path": "/health",
+      "location": "query",
+      "rule": "parameter.added.optional",
+      "direction": "request",
+      "classification": "compatible",
+      "explanation": "New optional query parameter \"verbose\".",
+      "after": {
+        "file": "./demo/specs/v2.yaml",
+        "pointer": "/paths/~1health/get/parameters/0"
+      },
+      "newValue": {
+        "type": "boolean"
+      },
+      "evidence": [
+        {
+          "kind": "schema",
+          "message": "New contract: {\"type\":\"boolean\"}",
+          "source": {
+            "file": "./demo/specs/v2.yaml",
+            "pointer": "/paths/~1health/get/parameters/0"
+          }
+        }
+      ]
+    },
+    {
+      "id": "change_963890a800b05fad03197b19",
+      "operationId": "operation_4c54f1158345328ef9118e33",
+      "method": "get",
+      "path": "/health",
+      "location": "response",
+      "rule": "schema.property.added",
+      "direction": "response",
+      "classification": "compatible",
+      "explanation": "Optional property \"version\" was added to the response 200 (application/json) schema.",
+      "before": {
+        "file": "./demo/specs/v1.yaml",
+        "pointer": "/paths/~1health/get/responses/200/content/application~1json"
+      },
+      "after": {
+        "file": "./demo/specs/v2.yaml",
+        "pointer": "/paths/~1health/get/responses/200/content/application~1json"
+      },
+      "oldValue": null,
+      "newValue": {
+        "type": "string"
+      },
+      "fieldPath": [
+        "version"
+      ],
+      "evidence": [
+        {
+          "kind": "schema",
+          "message": "Old contract (normalized schema /properties/version): null",
+          "source": {
+            "file": "./demo/specs/v1.yaml",
+            "pointer": "/paths/~1health/get/responses/200/content/application~1json"
+          }
+        },
+        {
+          "kind": "schema",
+          "message": "New contract (normalized schema /properties/version): {\"type\":\"string\"}",
+          "source": {
+            "file": "./demo/specs/v2.yaml",
+            "pointer": "/paths/~1health/get/responses/200/content/application~1json"
+          }
+        }
+      ]
+    },
+    {
+      "id": "change_5b559afb446057f2eb814f46",
+      "operationId": "operation_25aeeca43a7e0da11c3af7a6",
+      "method": "get",
+      "path": "/members/{id}",
+      "location": "path",
+      "rule": "operation.added",
+      "direction": "operation",
+      "classification": "compatible",
+      "explanation": "New operation GET /members/{id}.",
+      "after": {
+        "file": "./demo/specs/v2.yaml",
+        "pointer": "/paths/~1members~1{id}/get"
+      },
+      "evidence": [
+        {
+          "kind": "schema",
+          "message": "New contract: see source",
+          "source": {
+            "file": "./demo/specs/v2.yaml",
+            "pointer": "/paths/~1members~1{id}/get"
+          }
+        }
+      ]
+    },
+    {
+      "id": "change_e489ec144d24456f6daf0a9b",
+      "operationId": "operation_0c924c2c1dc8bfe958031936",
+      "method": "get",
+      "path": "/preferences",
+      "location": "response",
+      "rule": "schema.composition.changed",
+      "direction": "response",
+      "classification": "ambiguous",
+      "explanation": "Composition keywords changed for the response 200 (application/json) schema (oneOf); compatibility is not provable and requires manual review.",
+      "before": {
+        "file": "./demo/specs/v1.yaml",
+        "pointer": "/paths/~1preferences/get/responses/200/content/application~1json"
+      },
+      "after": {
+        "file": "./demo/specs/v2.yaml",
+        "pointer": "/paths/~1preferences/get/responses/200/content/application~1json"
+      },
+      "oldValue": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "newValue": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "mode"
+            ],
+            "properties": {
+              "mode": {
+                "const": "simple"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "mode",
+              "flags"
+            ],
+            "properties": {
+              "mode": {
+                "const": "advanced"
+              },
+              "flags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "fieldPath": [],
+      "evidence": [
+        {
+          "kind": "schema",
+          "message": "Old contract (normalized schema /): {\"additionalProperties\":true,\"type\":\"object\"}",
+          "source": {
+            "file": "./demo/specs/v1.yaml",
+            "pointer": "/paths/~1preferences/get/responses/200/content/application~1json"
+          }
+        },
+        {
+          "kind": "schema",
+          "message": "New contract (normalized schema /): {\"oneOf\":[{\"properties\":{\"mode\":{\"const\":\"simple\"}},\"required\":[\"mode\"],\"type\":\"object\"},{\"properties\":{\"flags\":{\"items\":{\"type\":\"string\"},\"type\":\"array\"},\"mode\":{\"const\":\"advanced\"}},\"required\":[\"...",
+          "source": {
+            "file": "./demo/specs/v2.yaml",
+            "pointer": "/paths/~1preferences/get/responses/200/content/application~1json"
+          }
+        }
+      ]
+    },
+    {
+      "id": "change_d75d90d6ac7368757a2407da",
+      "operationId": "operation_51c5dc335bf5e04397a10573",
+      "method": "post",
+      "path": "/users",
+      "location": "request",
+      "rule": "schema.required.added",
+      "direction": "request",
+      "classification": "breaking",
+      "explanation": "New required property \"displayName\" for the request body (application/json) schema: requests valid under the old contract may now be rejected.",
+      "before": {
+        "file": "./demo/specs/v1.yaml",
+        "pointer": "/paths/~1users/post/requestBody/content/application~1json"
+      },
+      "after": {
+        "file": "./demo/specs/v2.yaml",
+        "pointer": "/paths/~1users/post/requestBody/content/application~1json"
+      },
+      "oldValue": false,
+      "newValue": true,
+      "fieldPath": [
+        "displayName"
+      ],
+      "evidence": [
+        {
+          "kind": "schema",
+          "message": "Old contract (normalized schema /required): false",
+          "source": {
+            "file": "./demo/specs/v1.yaml",
+            "pointer": "/paths/~1users/post/requestBody/content/application~1json"
+          }
+        },
+        {
+          "kind": "schema",
+          "message": "New contract (normalized schema /required): true",
+          "source": {
+            "file": "./demo/specs/v2.yaml",
+            "pointer": "/paths/~1users/post/requestBody/content/application~1json"
+          }
+        }
+      ]
+    },
+    {
+      "id": "change_560bae89a882b34f566b2818",
+      "operationId": "operation_51c5dc335bf5e04397a10573",
+      "method": "post",
+      "path": "/users",
+      "location": "request",
+      "rule": "schema.property.removed",
+      "direction": "request",
+      "classification": "ambiguous",
+      "explanation": "Formerly required property \"name\" is no longer documented for the request body (application/json) schema; the specification does not prove whether the server ignores or rejects it.",
+      "before": {
+        "file": "./demo/specs/v1.yaml",
+        "pointer": "/paths/~1users/post/requestBody/content/application~1json"
+      },
+      "after": {
+        "file": "./demo/specs/v2.yaml",
+        "pointer": "/paths/~1users/post/requestBody/content/application~1json"
+      },
+      "oldValue": {
+        "type": "string"
+      },
+      "newValue": null,
+      "fieldPath": [
+        "name"
+      ],
+      "evidence": [
+        {
+          "kind": "schema",
+          "message": "Old contract (normalized schema /properties/name): {\"type\":\"string\"}",
+          "source": {
+            "file": "./demo/specs/v1.yaml",
+            "pointer": "/paths/~1users/post/requestBody/content/application~1json"
+          }
+        },
+        {
+          "kind": "schema",
+          "message": "New contract (normalized schema /properties/name): null",
+          "source": {
+            "file": "./demo/specs/v2.yaml",
+            "pointer": "/paths/~1users/post/requestBody/content/application~1json"
+          }
+        }
+      ]
+    },
+    {
+      "id": "change_1ba96601ae717c2cef9b23ed",
+      "operationId": "operation_51c5dc335bf5e04397a10573",
+      "method": "post",
+      "path": "/users",
+      "location": "request",
+      "rule": "schema.required.added",
+      "direction": "request",
+      "classification": "breaking",
+      "explanation": "New required property \"tenantId\" for the request body (application/json) schema: requests valid under the old contract may now be rejected.",
+      "before": {
+        "file": "./demo/specs/v1.yaml",
+        "pointer": "/paths/~1users/post/requestBody/content/application~1json"
+      },
+      "after": {
+        "file": "./demo/specs/v2.yaml",
+        "pointer": "/paths/~1users/post/requestBody/content/application~1json"
+      },
+      "oldValue": false,
+      "newValue": true,
+      "fieldPath": [
+        "tenantId"
+      ],
+      "evidence": [
+        {
+          "kind": "schema",
+          "message": "Old contract (normalized schema /required): false",
+          "source": {
+            "file": "./demo/specs/v1.yaml",
+            "pointer": "/paths/~1users/post/requestBody/content/application~1json"
+          }
+        },
+        {
+          "kind": "schema",
+          "message": "New contract (normalized schema /required): true",
+          "source": {
+            "file": "./demo/specs/v2.yaml",
+            "pointer": "/paths/~1users/post/requestBody/content/application~1json"
+          }
+        }
+      ]
+    },
+    {
+      "id": "change_b71b0214caeaa14663d45b6f",
+      "operationId": "operation_0c18aa94f3dba7ba4b44e270",
+      "method": "get",
+      "path": "/users/{id}",
+      "location": "path",
+      "rule": "operation.removed",
+      "direction": "operation",
+      "classification": "breaking",
+      "explanation": "Operation GET /users/{id} no longer exists in the new contract; requests to it may fail.",
+      "before": {
+        "file": "./demo/specs/v1.yaml",
+        "pointer": "/paths/~1users~1{id}/get"
+      },
+      "evidence": [
+        {
+          "kind": "schema",
+          "message": "Old contract: see source",
+          "source": {
+            "file": "./demo/specs/v1.yaml",
+            "pointer": "/paths/~1users~1{id}/get"
+          }
+        }
+      ]
+    }
+  ],
+  "uses": [
+    {
+      "id": "use_c40115476c0014b12b5ece47",
+      "file": "client.js",
+      "fileHash": "894281c1baa2380c44cc906f6b95872190bc0f8defdd3fe1fed4de84d3e40784",
+      "range": {
+        "start": 248,
+        "end": 286,
+        "line": 5,
+        "column": 26
+      },
+      "client": "fetch",
+      "urlExpression": "[source expression redacted; inspect file and range]",
+      "method": "get",
+      "operationIds": [
+        "operation_0c18aa94f3dba7ba4b44e270"
+      ],
+      "bindings": [
+        {
+          "kind": "url",
+          "name": "id",
+          "range": {
+            "start": 264,
+            "end": 266,
+            "line": 5,
+            "column": 42
+          }
+        },
+        {
+          "kind": "url",
+          "name": "locale",
+          "range": {
+            "start": 277,
+            "end": 283,
+            "line": 5,
+            "column": 55
+          }
+        },
+        {
+          "kind": "response-property",
+          "name": "fullName",
+          "range": {
+            "start": 412,
+            "end": 420,
+            "line": 8,
+            "column": 15
+          }
+        }
+      ],
+      "resolution": "partial",
+      "confidence": "medium",
+      "reason": "Path contains a dynamic template value"
+    },
+    {
+      "id": "use_5086b7cc0048bbc8c491ebcc",
+      "file": "client.js",
+      "fileHash": "894281c1baa2380c44cc906f6b95872190bc0f8defdd3fe1fed4de84d3e40784",
+      "range": {
+        "start": 491,
+        "end": 622,
+        "line": 12,
+        "column": 26
+      },
+      "client": "fetch",
+      "urlExpression": "[source expression redacted; inspect file and range]",
+      "method": "post",
+      "operationIds": [
+        "operation_51c5dc335bf5e04397a10573"
+      ],
+      "bindings": [
+        {
+          "kind": "response-property",
+          "name": "id",
+          "range": {
+            "start": 757,
+            "end": 759,
+            "line": 19,
+            "column": 18
+          }
+        }
+      ],
+      "resolution": "resolved",
+      "confidence": "high",
+      "reason": "Literal or immutable URL, method and operation matched"
+    },
+    {
+      "id": "use_dd16e18cae2880f2860e57ca",
+      "file": "client.js",
+      "fileHash": "894281c1baa2380c44cc906f6b95872190bc0f8defdd3fe1fed4de84d3e40784",
+      "range": {
+        "start": 822,
+        "end": 838,
+        "line": 23,
+        "column": 26
+      },
+      "client": "fetch",
+      "urlExpression": "[source expression redacted; inspect file and range]",
+      "method": "get",
+      "operationIds": [
+        "operation_4c54f1158345328ef9118e33"
+      ],
+      "bindings": [
+        {
+          "kind": "response-property",
+          "name": "ok",
+          "range": {
+            "start": 967,
+            "end": 969,
+            "line": 26,
+            "column": 17
+          }
+        }
+      ],
+      "resolution": "resolved",
+      "confidence": "high",
+      "reason": "Literal or immutable URL, method and operation matched"
+    },
+    {
+      "id": "use_0ae84e186a0564e73cbf414a",
+      "file": "client.js",
+      "fileHash": "894281c1baa2380c44cc906f6b95872190bc0f8defdd3fe1fed4de84d3e40784",
+      "range": {
+        "start": 1037,
+        "end": 1058,
+        "line": 30,
+        "column": 26
+      },
+      "client": "fetch",
+      "urlExpression": "[source expression redacted; inspect file and range]",
+      "method": "get",
+      "operationIds": [
+        "operation_0c924c2c1dc8bfe958031936"
+      ],
+      "bindings": [
+        {
+          "kind": "response-property",
+          "name": "theme",
+          "range": {
+            "start": 1190,
+            "end": 1195,
+            "line": 33,
+            "column": 16
+          }
+        }
+      ],
+      "resolution": "resolved",
+      "confidence": "high",
+      "reason": "Literal or immutable URL, method and operation matched"
+    }
+  ],
+  "findings": [
+    {
+      "id": "finding_0022dcd4bbb4abd28649df3e",
+      "changeId": "change_d75d90d6ac7368757a2407da",
+      "useId": "use_5086b7cc0048bbc8c491ebcc",
+      "consequence": "Potential break: New required property \"displayName\" for the request body (application/json) schema: requests valid under the old contract may now be rejected.",
+      "evidence": [
+        {
+          "kind": "ast",
+          "message": "HTTP post call; Literal or immutable URL, method and operation matched",
+          "file": "client.js",
+          "range": {
+            "start": 491,
+            "end": 622,
+            "line": 12,
+            "column": 26
+          }
+        },
+        {
+          "kind": "schema",
+          "message": "Old contract (normalized schema /required): false",
+          "source": {
+            "file": "./demo/specs/v1.yaml",
+            "pointer": "/paths/~1users/post/requestBody/content/application~1json"
+          }
+        },
+        {
+          "kind": "schema",
+          "message": "New contract (normalized schema /required): true",
+          "source": {
+            "file": "./demo/specs/v2.yaml",
+            "pointer": "/paths/~1users/post/requestBody/content/application~1json"
+          }
+        }
+      ],
+      "confidence": "high",
+      "reviewStatus": "pending"
+    },
+    {
+      "id": "finding_1ec9cb6a2a53a35e83d943a8",
+      "changeId": "change_1ba96601ae717c2cef9b23ed",
+      "useId": "use_5086b7cc0048bbc8c491ebcc",
+      "consequence": "Potential break: New required property \"tenantId\" for the request body (application/json) schema: requests valid under the old contract may now be rejected.",
+      "evidence": [
+        {
+          "kind": "ast",
+          "message": "HTTP post call; Literal or immutable URL, method and operation matched",
+          "file": "client.js",
+          "range": {
+            "start": 491,
+            "end": 622,
+            "line": 12,
+            "column": 26
+          }
+        },
+        {
+          "kind": "schema",
+          "message": "Old contract (normalized schema /required): false",
+          "source": {
+            "file": "./demo/specs/v1.yaml",
+            "pointer": "/paths/~1users/post/requestBody/content/application~1json"
+          }
+        },
+        {
+          "kind": "schema",
+          "message": "New contract (normalized schema /required): true",
+          "source": {
+            "file": "./demo/specs/v2.yaml",
+            "pointer": "/paths/~1users/post/requestBody/content/application~1json"
+          }
+        }
+      ],
+      "confidence": "high",
+      "reviewStatus": "pending"
+    },
+    {
+      "id": "finding_27ffbfa1d0ee79da3546e0f7",
+      "changeId": "change_e489ec144d24456f6daf0a9b",
+      "useId": "use_0ae84e186a0564e73cbf414a",
+      "consequence": "Review needed: Composition keywords changed for the response 200 (application/json) schema (oneOf); compatibility is not provable and requires manual review.",
+      "evidence": [
+        {
+          "kind": "ast",
+          "message": "HTTP get call; Literal or immutable URL, method and operation matched",
+          "file": "client.js",
+          "range": {
+            "start": 1037,
+            "end": 1058,
+            "line": 30,
+            "column": 26
+          }
+        },
+        {
+          "kind": "schema",
+          "message": "Old contract (normalized schema /): {\"additionalProperties\":true,\"type\":\"object\"}",
+          "source": {
+            "file": "./demo/specs/v1.yaml",
+            "pointer": "/paths/~1preferences/get/responses/200/content/application~1json"
+          }
+        },
+        {
+          "kind": "schema",
+          "message": "New contract (normalized schema /): {\"oneOf\":[{\"properties\":{\"mode\":{\"const\":\"simple\"}},\"required\":[\"mode\"],\"type\":\"object\"},{\"properties\":{\"flags\":{\"items\":{\"type\":\"string\"},\"type\":\"array\"},\"mode\":{\"const\":\"advanced\"}},\"required\":[\"...",
+          "source": {
+            "file": "./demo/specs/v2.yaml",
+            "pointer": "/paths/~1preferences/get/responses/200/content/application~1json"
+          }
+        }
+      ],
+      "confidence": "low",
+      "reviewStatus": "pending"
+    },
+    {
+      "id": "finding_310f1543a7240202c57aa732",
+      "changeId": "change_560bae89a882b34f566b2818",
+      "useId": "use_5086b7cc0048bbc8c491ebcc",
+      "consequence": "Review needed: Formerly required property \"name\" is no longer documented for the request body (application/json) schema; the specification does not prove whether the server ignores or rejects it.",
+      "evidence": [
+        {
+          "kind": "ast",
+          "message": "HTTP post call; Literal or immutable URL, method and operation matched",
+          "file": "client.js",
+          "range": {
+            "start": 491,
+            "end": 622,
+            "line": 12,
+            "column": 26
+          }
+        },
+        {
+          "kind": "schema",
+          "message": "Old contract (normalized schema /properties/name): {\"type\":\"string\"}",
+          "source": {
+            "file": "./demo/specs/v1.yaml",
+            "pointer": "/paths/~1users/post/requestBody/content/application~1json"
+          }
+        },
+        {
+          "kind": "schema",
+          "message": "New contract (normalized schema /properties/name): null",
+          "source": {
+            "file": "./demo/specs/v2.yaml",
+            "pointer": "/paths/~1users/post/requestBody/content/application~1json"
+          }
+        }
+      ],
+      "confidence": "low",
+      "reviewStatus": "pending"
+    },
+    {
+      "id": "finding_396f0396255bb49f8d0892d3",
+      "changeId": "change_b71b0214caeaa14663d45b6f",
+      "useId": "use_c40115476c0014b12b5ece47",
+      "consequence": "Potential break: Operation GET /users/{id} no longer exists in the new contract; requests to it may fail.",
+      "evidence": [
+        {
+          "kind": "ast",
+          "message": "HTTP get call; Path contains a dynamic template value",
+          "file": "client.js",
+          "range": {
+            "start": 248,
+            "end": 286,
+            "line": 5,
+            "column": 26
+          }
+        },
+        {
+          "kind": "schema",
+          "message": "Old contract: see source",
+          "source": {
+            "file": "./demo/specs/v1.yaml",
+            "pointer": "/paths/~1users~1{id}/get"
+          }
+        }
+      ],
+      "confidence": "medium",
+      "reviewStatus": "pending"
+    }
+  ],
+  "repairs": [],
+  "verification": [],
+  "limitations": [
+    "Schema comparison covers a documented subset of JSON Schema; composition (allOf/anyOf/oneOf/not/if-then-else/discriminator) and uninterpreted keywords are reported as ambiguous when they change, never as safe.",
+    "Operations are matched by HTTP method and path template; renamed operations, parameters and properties are reported as removal plus addition and never inferred from similar names.",
+    "Security compares effective requirement names and scopes only; security scheme definitions (type, location, flows) are not part of the snapshot and are not compared.",
+    "Parameter style/explode, encoding, response headers, links and callbacks are not part of the snapshot and are not compared.",
+    "Evidence pointers inside schemas are relative to the normalized (dereferenced) schema; source locations point to the enclosing parameter, media type, response or operation.",
+    "Recursive schema back-references are compared by reference text only.",
+    "OpenAPI 3.0 nullable and boolean exclusiveMinimum/exclusiveMaximum are normalized against 3.1 type unions and numeric bounds; other dialect differences (for example nullable inside a 3.1 document) are treated as uninterpreted keywords.",
+    "Several media type keys that collapse after removing parameters are reported as ambiguous instead of silently selecting one schema.",
+    "Static analysis only: unknown wrappers, computed properties, mutable values and complex data flow require review.",
+    "Response properties are traced only through immutable direct response variables and fetch json() variables.",
+    "Exported URL expressions and scanned values are redacted; inspect the local source at the reported coordinates."
+  ],
+  "diagnostics": [
+    {
+      "code": "SCAN_REVIEW_REQUIRED",
+      "severity": "warning",
+      "message": "Path contains a dynamic template value",
+      "file": "client.js"
+    }
+  ]
+}

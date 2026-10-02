@@ -1,0 +1,71 @@
+openapi: 3.1.0
+info:
+  title: APIPatch synthetic directory API
+  version: 1.0.0
+servers:
+  # Same-origin API: the consumer uses relative URLs and the demo serves both on an ephemeral loopback port.
+  - url: /
+paths:
+  /users/{id}:
+    get:
+      operationId: getUser
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: locale
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: User
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, fullName]
+                properties:
+                  id: { type: string }
+                  fullName: { type: string }
+  /users:
+    post:
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                properties:
+                  id: { type: string }
+  /health:
+    get:
+      operationId: health
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema: { type: object, required: [ok], properties: { ok: { type: boolean } } }
+  /preferences:
+    get:
+      operationId: preferences
+      responses:
+        '200':
+          description: Preferences
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
