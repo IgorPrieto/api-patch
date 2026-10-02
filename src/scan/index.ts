@@ -416,14 +416,15 @@ interface FinalizeInput {
   base: string | undefined; baseUnknown: boolean; baseUncertain: boolean; scanBaseUrl: string | undefined;
   config: ts.ObjectLiteralExpression | undefined; body: ts.Expression | undefined;
   uniqueOperations: ApiOperation[]; apiBase: URL | undefined; changes: ApiChange[]; via?: WrapperReference;
-  // True for the single recognized call inside a wrapper's own body: reported for transparency as an
-  // unresolved, low-confidence use (today's behaviour for an unrecognized shape), with no operation
-  // matches and no findings, so it never duplicates a finding already reported at a resolved call site.
-  isWrapperDefinition?: boolean;
 }
 
+// Always computes the plain, non-suppressed result — including for the single recognized call
+// inside a wrapper's own body, which is treated exactly like a direct call of the same shape here.
+// Suppressing its findings is a separate, conditional step (see suppressSafeWrapperDefinitions)
+// applied after the whole repository has been scanned, once every one of its own-file call sites'
+// resolutions is known.
 function finalizeUse(input: FinalizeInput): { use: ConsumerUse; findings: Finding[] } {
-  const { sf, checker, relative, fileHash, node, client, method, methodUnknown, urlNode, url, urlExpressionText, base, baseUnknown, baseUncertain, config, body, uniqueOperations, apiBase, changes, via, isWrapperDefinition } = input;
+  const { sf, checker, relative, fileHash, node, client, method, methodUnknown, urlNode, url, urlExpressionText, base, baseUnknown, baseUncertain, config, body, uniqueOperations, apiBase, changes, via } = input;
   let value = url?.value;
   if (url?.unknownPrefix) value = url.value.slice(url.unknownPrefix.length);
   const relativeValue = value !== undefined && !isAbsoluteUrl(value);
@@ -433,18 +434,15 @@ function finalizeUse(input: FinalizeInput): { use: ConsumerUse; findings: Findin
     : hint ? (value.startsWith('/') ? resolveUrl(value) : undefined)
     : client.kind === 'axios' && relativeValue && base ? resolveUrl(combineUrls(base, value), input.scanBaseUrl)
     : resolveUrl(value, input.scanBaseUrl);
-  const matches = parsed && !isWrapperDefinition ? matchingOperations(uniqueOperations, parsed.pathname, hint ? undefined : parsed.origin, method, apiBase, hint) : [];
+  const matches = parsed ? matchingOperations(uniqueOperations, parsed.pathname, hint ? undefined : parsed.origin, method, apiBase, hint) : [];
   const originUnconfirmed = matches.some(match => !match.originConfirmed);
   const operationIds = [...new Set(matches.map(match => match.operation.id))].sort();
-  const resolution = isWrapperDefinition ? 'unresolved'
-    : !url || !parsed || !method || methodUnknown || hint ? 'unresolved'
+  const resolution = !url || !parsed || !method || methodUnknown || hint ? 'unresolved'
     : matches.length === 1 && !url.dynamic && !originUnconfirmed && !baseUncertain ? 'resolved' : 'partial';
-  let confidence: Confidence = isWrapperDefinition ? 'low'
-    : resolution === 'resolved' ? 'high' : resolution === 'partial' && !originUnconfirmed && !baseUncertain ? 'medium' : 'low';
+  let confidence: Confidence = resolution === 'resolved' ? 'high' : resolution === 'partial' && !originUnconfirmed && !baseUncertain ? 'medium' : 'low';
   // Scope rule: a call resolved only through a wrapper (or an imported axios instance) is never high confidence.
   if (via && confidence === 'high') confidence = 'medium';
-  const baseReason = isWrapperDefinition ? 'Call inside a recognized wrapper body; see call sites through this wrapper'
-    : !url ? 'URL expression could not be resolved statically'
+  const baseReason = !url ? 'URL expression could not be resolved statically'
     : !parsed ? (url.unknownPrefix ? 'URL starts with a value that could not be resolved statically' : 'URL or base could not be interpreted')
     : !method || methodUnknown ? 'HTTP method could not be resolved statically'
     : hint ? `${url.unknownPrefix ? 'URL base comes from a value' : 'axios baseURL'} that could not be resolved statically; path matches are review hints only`
@@ -463,7 +461,7 @@ function finalizeUse(input: FinalizeInput): { use: ConsumerUse; findings: Findin
     ...(via ? { via } : {}),
   };
   const findings: Finding[] = [];
-  for (const change of isWrapperDefinition ? [] : changes) {
+  for (const change of changes) {
     if (change.classification === 'compatible') continue;
     if (!matches.some(({ operation }) => operation.id === change.operationId || operation.operationId === change.operationId)) continue;
     findings.push({
@@ -547,6 +545,18 @@ interface WrapperSpec {
   configForwardedParam?: ts.Symbol;
   bodyForwardedParam?: ts.Symbol;
   callNode: ts.CallExpression;
+  // The wrapper's own binding (undefined only for an anonymous `export default (...) => ...`,
+  // which is exported by construction). Used to find every other same-file reference to it.
+  symbol?: ts.Symbol;
+  declNameNode?: ts.Node;
+  // True when the wrapper is reachable from outside its own file: `export`, an `export { }` list,
+  // a default export, or a CommonJS `module.exports`/`exports.x` assignment.
+  exported: boolean;
+  // Every same-file reference to `symbol` (other than the declaration) that is a direct call of it;
+  // `selfReferencesDisqualified` is true if any same-file reference is NOT such a call (passed as a
+  // value, stored, `.call`/`.apply`/`.bind`, etc.) — see suppressSafeWrapperDefinitions.
+  selfReferenceCalls: ts.CallExpression[];
+  selfReferencesDisqualified: boolean;
 }
 
 interface AxiosInstanceSpec { client: Client; declRange: CodeRange }
@@ -555,10 +565,9 @@ interface WrapperIndex {
   byDeclSymbol: Map<ts.Symbol, WrapperSpec>;
   byFileAndName: Map<string, Map<string, WrapperSpec>>;
   instanceByFileAndName: Map<string, Map<string, AxiosInstanceSpec>>;
-  // The single recognized call inside each wrapper's own body: reported as its own low-confidence,
-  // unresolved use (today's behaviour for an unrecognized shape), never duplicated with findings
-  // from its resolved call sites (src/scan/WRAPPERS.md, "Duplicates").
-  internalCalls: Set<ts.CallExpression>;
+  // Every wrapper spec created while building this index, each listed once regardless of how many
+  // names/keys it is registered under (own name, 'default', re-export alias, ...).
+  allSpecs: WrapperSpec[];
 }
 
 function unwrapTrivial(node: ts.Expression): ts.Expression {
@@ -670,15 +679,70 @@ function detectWrapperFromFunction(fn: ts.FunctionDeclaration | ts.ArrowFunction
   if (!ts.isCallExpression(expr)) return undefined;
   const shape = analyzeWrapperCall(expr, checker, new Set(params));
   if (!shape) return undefined;
-  return { name, source, declRange: range(source, nameRangeNode), params, ...shape };
+  const symbol = ts.isIdentifier(nameRangeNode) ? checker.getSymbolAtLocation(nameRangeNode) : undefined;
+  return {
+    name, source, declRange: range(source, nameRangeNode), params, ...shape,
+    symbol, declNameNode: ts.isIdentifier(nameRangeNode) ? nameRangeNode : undefined,
+    exported: false, selfReferenceCalls: [], selfReferencesDisqualified: false,
+  };
+}
+
+// Finds every export of a module-local binding: an `export` modifier, an `export { name }` list
+// (not a re-export), `export default name`, or a CommonJS `module.exports`/`exports.x = name`.
+function collectExportedSymbols(source: ts.SourceFile, checker: ts.TypeChecker): Set<ts.Symbol> {
+  const exported = new Set<ts.Symbol>();
+  const addIdentifier = (expr: ts.Expression | undefined): void => {
+    if (expr && ts.isIdentifier(expr)) { const symbol = checker.getSymbolAtLocation(expr); if (symbol) exported.add(symbol); }
+  };
+  for (const stmt of source.statements) {
+    if ((ts.isFunctionDeclaration(stmt) || ts.isVariableStatement(stmt)) && hasModifier(stmt, ts.SyntaxKind.ExportKeyword)) {
+      if (ts.isFunctionDeclaration(stmt)) addIdentifier(stmt.name);
+      else for (const decl of stmt.declarationList.declarations) addIdentifier(ts.isIdentifier(decl.name) ? decl.name : undefined);
+    }
+    if (ts.isExportDeclaration(stmt) && !stmt.moduleSpecifier && stmt.exportClause && ts.isNamedExports(stmt.exportClause)) {
+      for (const spec of stmt.exportClause.elements) addIdentifier(spec.propertyName ?? spec.name);
+    }
+    if (ts.isExportAssignment(stmt) && !stmt.isExportEquals) addIdentifier(stmt.expression);
+  }
+  const isExportsTarget = (expr: ts.Expression): boolean => {
+    if (!ts.isPropertyAccessExpression(expr)) return false;
+    if (ts.isIdentifier(expr.expression) && expr.expression.text === 'exports') return true;
+    if (ts.isIdentifier(expr.expression) && expr.expression.text === 'module' && expr.name.text === 'exports') return true;
+    return ts.isPropertyAccessExpression(expr.expression) && ts.isIdentifier(expr.expression.expression)
+      && expr.expression.expression.text === 'module' && expr.expression.name.text === 'exports';
+  };
+  function visitCjs(node: ts.Node): void {
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && isExportsTarget(node.left)) addIdentifier(node.right);
+    ts.forEachChild(node, visitCjs);
+  }
+  visitCjs(source);
+  return exported;
+}
+
+// Every same-file reference to `symbol` other than its own declaration, classified as a direct
+// call of it or not (see WrapperSpec.selfReferencesDisqualified).
+function findSelfReferences(source: ts.SourceFile, symbol: ts.Symbol, declNameNode: ts.Node, checker: ts.TypeChecker): { calls: ts.CallExpression[]; disqualified: boolean } {
+  const calls: ts.CallExpression[] = [];
+  let disqualified = false;
+  function visit(node: ts.Node): void {
+    if (ts.isIdentifier(node) && node !== declNameNode && checker.getSymbolAtLocation(node) === symbol) {
+      const parent = node.parent;
+      if (ts.isCallExpression(parent) && parent.expression === node) calls.push(parent);
+      else disqualified = true;
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(source);
+  return { calls, disqualified };
 }
 
 function buildWrapperIndex(sourceFiles: ts.SourceFile[], checker: ts.TypeChecker, resolvableLetsByFile: Map<ts.SourceFile, Set<ts.Symbol>>): WrapperIndex {
-  const index: WrapperIndex = { byDeclSymbol: new Map(), byFileAndName: new Map(), instanceByFileAndName: new Map(), internalCalls: new Set() };
+  const index: WrapperIndex = { byDeclSymbol: new Map(), byFileAndName: new Map(), instanceByFileAndName: new Map(), allSpecs: [] };
   for (const source of sourceFiles) {
     resolvableLets = resolvableLetsByFile.get(source) ?? new Set();
     const wrapperNames = new Map<string, WrapperSpec>();
     const instanceNames = new Map<string, AxiosInstanceSpec>();
+    const specsThisFile: WrapperSpec[] = [];
     for (const stmt of source.statements) {
       if (ts.isFunctionDeclaration(stmt) && stmt.body) {
         const isDefault = hasModifier(stmt, ts.SyntaxKind.DefaultKeyword);
@@ -688,7 +752,7 @@ function buildWrapperIndex(sourceFiles: ts.SourceFile[], checker: ts.TypeChecker
           wrapperNames.set(declName, spec);
           if (isDefault) wrapperNames.set('default', spec);
           if (stmt.name) { const symbol = checker.getSymbolAtLocation(stmt.name); if (symbol) index.byDeclSymbol.set(symbol, spec); }
-          index.internalCalls.add(spec.callNode);
+          specsThisFile.push(spec);
         }
         continue;
       }
@@ -702,7 +766,7 @@ function buildWrapperIndex(sourceFiles: ts.SourceFile[], checker: ts.TypeChecker
               wrapperNames.set(name, spec);
               const symbol = checker.getSymbolAtLocation(decl.name);
               if (symbol) index.byDeclSymbol.set(symbol, spec);
-              index.internalCalls.add(spec.callNode);
+              specsThisFile.push(spec);
             }
             continue;
           }
@@ -715,7 +779,7 @@ function buildWrapperIndex(sourceFiles: ts.SourceFile[], checker: ts.TypeChecker
         const expr = stmt.expression;
         if (ts.isFunctionExpression(expr) || ts.isArrowFunction(expr)) {
           const spec = detectWrapperFromFunction(expr, 'default', expr.name ?? stmt, source, checker);
-          if (spec) { wrapperNames.set('default', spec); index.internalCalls.add(spec.callNode); }
+          if (spec) { wrapperNames.set('default', spec); specsThisFile.push(spec); }
         } else if (ts.isIdentifier(expr)) {
           const existing = wrapperNames.get(expr.text);
           if (existing) wrapperNames.set('default', existing);
@@ -724,6 +788,18 @@ function buildWrapperIndex(sourceFiles: ts.SourceFile[], checker: ts.TypeChecker
     }
     if (wrapperNames.size) index.byFileAndName.set(source.fileName, wrapperNames);
     if (instanceNames.size) index.instanceByFileAndName.set(source.fileName, instanceNames);
+    if (specsThisFile.length) {
+      const exportedSymbols = collectExportedSymbols(source, checker);
+      for (const spec of specsThisFile) {
+        spec.exported = spec.symbol ? exportedSymbols.has(spec.symbol) : true;
+        if (spec.symbol && spec.declNameNode) {
+          const { calls, disqualified } = findSelfReferences(source, spec.symbol, spec.declNameNode, checker);
+          spec.selfReferenceCalls = calls;
+          spec.selfReferencesDisqualified = disqualified;
+        }
+        index.allSpecs.push(spec);
+      }
+    }
   }
   return index;
 }
@@ -968,6 +1044,7 @@ export async function scanRepository(options: ScanOptions): Promise<ScanResult> 
   const checker = program.getTypeChecker();
   const uses: ConsumerUse[] = [];
   const findings: Finding[] = [];
+  const allCallUses = new Map<ts.CallExpression, ConsumerUse>();
   const operations = [...options.oldApi.operations, ...options.newApi.operations];
   const uniqueOperations = [...new Map(operations.map(operation => [operation.id, operation])).values()];
   const apiBase = httpUrl(options.baseUrl);
@@ -1008,10 +1085,10 @@ export async function scanRepository(options: ScanOptions): Promise<ScanResult> 
             config: (shape ?? resolvedVia!).config, body: (shape ?? resolvedVia!).body,
             uniqueOperations, apiBase, changes: options.changes,
             ...(resolvedVia ? { via: resolvedVia.via } : {}),
-            ...(shape && wrapperIndex.internalCalls.has(node) ? { isWrapperDefinition: true } : {}),
           });
           uses.push(use);
           callUses.set(node, use);
+          allCallUses.set(node, use);
           if (use.resolution !== 'resolved') diagnostics.push({ code: 'SCAN_REVIEW_REQUIRED', severity: 'warning', message: use.reason, file: relative });
           findings.push(...newFindings);
         }
@@ -1054,7 +1131,35 @@ export async function scanRepository(options: ScanOptions): Promise<ScanResult> 
     }
     collectResponseAccesses(source);
   }
+  suppressSafeWrapperDefinitions(wrapperIndex, allCallUses, findings, root);
   uses.sort((a, b) => a.file.localeCompare(b.file) || a.range.start - b.range.start);
   findings.sort((a, b) => a.id.localeCompare(b.id));
   return { schemaVersion: SCHEMA_VERSION, uses, findings, diagnostics, limitations };
+}
+
+// For a module-local (never exported) wrapper whose every same-file reference is itself a call
+// that resolved through this wrapper, the wrapper's own internal call cannot be reached any other
+// way, so reporting it too would duplicate the finding(s) already attached to its call sites: its
+// own use is downgraded to unresolved/low with no operation matches, and any findings already
+// generated for it are dropped. An exported wrapper, one with no provably-covered callers, or one
+// referenced any other way (stored, passed as a value, `.call`/`.apply`/`.bind`, ...) keeps exactly
+// the same resolution/confidence/operationIds/findings a direct call of that shape would get — see
+// "Duplicates" in src/scan/WRAPPERS.md.
+function suppressSafeWrapperDefinitions(index: WrapperIndex, allCallUses: Map<ts.CallExpression, ConsumerUse>, findings: Finding[], root: string): void {
+  for (const spec of index.allSpecs) {
+    if (spec.exported || spec.selfReferencesDisqualified) continue;
+    const specFile = toRepoRelative(root, spec.source.fileName);
+    const allCoveredByThisWrapper = spec.selfReferenceCalls.every(call => {
+      const use = allCallUses.get(call);
+      return use?.resolution === 'resolved' && use.via?.name === spec.name && use.via?.file === specFile;
+    });
+    if (!allCoveredByThisWrapper) continue;
+    const internalUse = allCallUses.get(spec.callNode);
+    if (!internalUse || internalUse.via) continue;
+    internalUse.operationIds = [];
+    internalUse.resolution = 'unresolved';
+    internalUse.confidence = 'low';
+    internalUse.reason = `Call inside wrapper '${spec.name}'; every call site in this file already resolved through it, so findings are reported there instead`;
+    for (let i = findings.length - 1; i >= 0; i--) if (findings[i]!.useId === internalUse.id) findings.splice(i, 1);
+  }
 }

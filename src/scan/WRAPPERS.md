@@ -100,12 +100,32 @@ rules otherwise work exactly as for a direct call.
 
 The single recognized call inside a wrapper's body is still visited like any other call
 expression in its file, so it still gets its own `ConsumerUse` (for transparency — e.g. so a
-file-level review still shows where the wrapper ultimately calls out). To avoid double-reporting
-the same operation once its call sites are resolved, that internal use is always reported as
-`resolution: 'unresolved'`, `confidence: 'low'`, with no `operationIds` and **no findings** —
-independent of what its URL/method would otherwise resolve to. Every finding for the wrapped
-operation is instead attached to the resolved call site(s)'s own use(s), so a given operation and
-call site is never counted twice.
+file-level review still shows where the wrapper ultimately calls out). By default that internal
+use is resolved exactly like a direct call of the same shape would be — same resolution,
+confidence, `operationIds` and findings — because soundness requires never dropping a finding
+without proof that it is reported somewhere else.
+
+That internal use's `operationIds` and findings are suppressed (downgraded to
+`resolution: 'unresolved'`, `confidence: 'low'`, no `operationIds`, no findings) **only when both
+of these can be proven from the file(s) the scan actually read**:
+
+- **The wrapper is not reachable from outside its own file.** No `export` modifier, no
+  `export { name }` list, no default export, and no CommonJS `module.exports`/`exports.x`
+  assignment of it. An exported wrapper might be called from a file this scan did not read (a
+  two-hop import, a re-export, a package consumer, or simply a caller added later), so an
+  exported wrapper's internal use is never suppressed, even if this scan finds no importer for it.
+- **Every other reference to the wrapper's own binding in its own file is a direct call of it that
+  itself resolved (`resolution: 'resolved'`) through this wrapper.** A reference used any other
+  way — passed as a value (`handlers.push(getUser)`), stored, re-exported, called indirectly
+  (`.call`/`.apply`/`.bind`, a computed call), or a call that itself stayed `partial`/`unresolved`
+  (unresolvable arguments, multiple matches, an unconfirmed origin, ...) — means some reachable use
+  of the operation is not accounted for by a specific call site's own finding, so suppression does
+  not apply and the internal use is left exactly as an unsuppressed (pre-S2-shaped) call would be.
+
+Only when both hold is every real use of the operation provably already covered by a resolved,
+`via`-bearing call site's own finding, making the wrapper body's own (necessarily parameter-based,
+at-best-`partial`) match pure noise; findings stay keyed per `(change, use)`, so a given operation
+and call site is still never counted twice even when suppression does not apply.
 
 ## Never-reassigned `let`
 

@@ -166,6 +166,76 @@ describe('wrapper recognition: same-file shapes, URL joining, method resolution,
   });
 });
 
+describe('wrapper-body suppression requires every caller to be provably covered', () => {
+  const users = operation('users', '/users/{id}', 'get', ['https://api.example.test']);
+  const WRAPPER = `function getUser(id) {\n  return fetch(\`/users/\${id}\`);\n}\n`;
+  const EXPORTED_WRAPPER = `export function getUser(id) {\n  return fetch(\`/users/\${id}\`);\n}\n`;
+
+  it('(a) suppresses the inner use for a module-local wrapper whose only caller resolved', async () => {
+    const root = await repository();
+    await writeFile(path.join(root, 'consumer.ts'), `${WRAPPER}getUser('1');\n`);
+    const result = await scanRepository({ repository: root, oldApi: snapshot([users]), newApi: snapshot([users]), changes: [breaking('users')], baseUrl: 'https://api.example.test' });
+    validateDocument('ScanResult', result);
+    const inner = result.uses.find(use => !use.via)!;
+    expect(inner).toMatchObject({ resolution: 'unresolved', confidence: 'low', operationIds: [] });
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]?.useId).not.toBe(inner.id);
+  });
+
+  it('(b) keeps the inner use findings for an exported wrapper whose only caller is a one-hop importer, in addition to the call site', async () => {
+    const root = await repository();
+    await writeFile(path.join(root, 'wrapper.ts'), EXPORTED_WRAPPER);
+    await writeFile(path.join(root, 'consumer.ts'), `import { getUser } from './wrapper.js';\ngetUser('1');\n`);
+    const result = await scanRepository({ repository: root, oldApi: snapshot([users]), newApi: snapshot([users]), changes: [breaking('users')], baseUrl: 'https://api.example.test' });
+    validateDocument('ScanResult', result);
+    const callSite = result.uses.find(use => use.via)!;
+    const inner = result.uses.find(use => !use.via && use.file === 'wrapper.ts')!;
+    expect(callSite).toMatchObject({ resolution: 'resolved', operationIds: ['users'] });
+    expect(inner).toMatchObject({ resolution: 'partial', operationIds: ['users'] });
+    expect(result.findings.map(f => f.useId).sort()).toEqual([callSite.id, inner.id].sort());
+  });
+
+  it('(c) keeps the inner use findings for an exported wrapper with no scanned callers', async () => {
+    const root = await repository();
+    await writeFile(path.join(root, 'wrapper.ts'), EXPORTED_WRAPPER);
+    const result = await scanRepository({ repository: root, oldApi: snapshot([users]), newApi: snapshot([users]), changes: [breaking('users')], baseUrl: 'https://api.example.test' });
+    validateDocument('ScanResult', result);
+    expect(result.uses).toHaveLength(1);
+    expect(result.uses[0]).toMatchObject({ resolution: 'partial', operationIds: ['users'] });
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]?.useId).toBe(result.uses[0]?.id);
+  });
+
+  it('(d) keeps the inner use findings for a module-local wrapper also referenced as a value', async () => {
+    const root = await repository();
+    await writeFile(path.join(root, 'consumer.ts'), `${WRAPPER}const handlers = [];\nhandlers.push(getUser);\ngetUser('1');\n`);
+    const result = await scanRepository({ repository: root, oldApi: snapshot([users]), newApi: snapshot([users]), changes: [breaking('users')], baseUrl: 'https://api.example.test' });
+    validateDocument('ScanResult', result);
+    const callSite = result.uses.find(use => use.via)!;
+    const inner = result.uses.find(use => !use.via)!;
+    expect(inner).toMatchObject({ resolution: 'partial', operationIds: ['users'] });
+    expect(result.findings.map(f => f.useId).sort()).toEqual([callSite.id, inner.id].sort());
+  });
+
+  it('(e) an unsuppressed wrapper-body call matches the same shape scanned as a plain (non-wrapper) function', async () => {
+    const root = await repository();
+    await writeFile(path.join(root, 'wrapper.ts'), EXPORTED_WRAPPER); // exported -> never suppressed
+    const wrapped = await scanRepository({ repository: root, oldApi: snapshot([users]), newApi: snapshot([users]), changes: [], baseUrl: 'https://api.example.test' });
+
+    const plainRoot = await repository();
+    // Two statements instead of one: not a recognized wrapper shape, so this is handled as an
+    // ordinary direct call with no wrapper machinery involved at all - the pre-S2 baseline.
+    await writeFile(path.join(plainRoot, 'wrapper.ts'), `export function getUser(id) {\n  const response = fetch(\`/users/\${id}\`);\n  return response;\n}\n`);
+    const plain = await scanRepository({ repository: plainRoot, oldApi: snapshot([users]), newApi: snapshot([users]), changes: [], baseUrl: 'https://api.example.test' });
+
+    expect(wrapped.uses).toHaveLength(1);
+    expect(plain.uses).toHaveLength(1);
+    const shape = (use: typeof wrapped.uses[number]) => ({ client: use.client, method: use.method, resolution: use.resolution, confidence: use.confidence, operationIds: use.operationIds, url: use.url });
+    expect(shape(wrapped.uses[0]!)).toEqual(shape(plain.uses[0]!));
+    expect(wrapped.uses[0]?.via).toBeUndefined(); // the wrapper's own body is never itself a call site
+  });
+});
+
 describe('never-reassigned let resolution', () => {
   const u = `'https://api.example.test/users/1'`;
   const users = operation('users', '/users/{id}', 'get', ['https://api.example.test']);
