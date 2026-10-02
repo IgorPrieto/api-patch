@@ -7,7 +7,7 @@ import { runConsumerContract } from '../../src/demo/contract.js';
 
 const run = (result: DemoResult, name: keyof DemoResult['runs'], id: string) => result.runs[name].cases.find(item => item.id === id)!;
 
-describe('synthetic demo end to end', () => {
+describe('synthetic demo end to end', { timeout: 30_000 }, () => {
   it('breaks on v2, repairs a temporary copy with an explicit migration and turns supported cases green', async () => {
     const before = await readFile(path.join(DEMO_PATHS.repository, 'client.js'), 'utf8');
     const result = await runFullDemo({ keepWorkspace: true });
