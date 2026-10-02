@@ -114,6 +114,88 @@ function fieldSchema(operation: ApiOperation, location: Location, name: string):
   return unverifiable ? undefined : null;
 }
 
+const MAX_PARENT_DEPTH = 8;
+
+/**
+ * Properties of a nested object schema reached through `properties` (and object-only `allOf`). Anything
+ * APIPatch cannot prove to be a plain object is unverifiable: composition with `oneOf`/`anyOf`/`not`,
+ * arrays, `$ref` left unresolved, schemas with only `additionalProperties`, or a recursive path.
+ */
+function strictObjectProperties(schema: JsonValue | undefined, seen: Set<object>, depth = 0): Map<string, JsonValue> | string {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return 'is not an object schema';
+  if (seen.has(schema) || depth > MAX_PARENT_DEPTH) return 'is recursive or too deep';
+  if (Object.hasOwn(schema, '$ref')) return 'uses an unresolved $ref (possibly recursive)';
+  for (const keyword of ['oneOf', 'anyOf', 'not']) if (Object.hasOwn(schema, keyword)) return `uses ${keyword}`;
+  const types = typeof schema.type === 'string' ? [schema.type] : Array.isArray(schema.type) ? schema.type : [];
+  if (Object.hasOwn(schema, 'items') || types.includes('array')) return 'is an array';
+  if (types.some(type => type !== 'object')) return `has type ${types.join('|')}`;
+  const next = new Set(seen).add(schema);
+  const result = new Map<string, JsonValue>();
+  let known = false;
+  const properties = schema.properties;
+  if (properties && typeof properties === 'object' && !Array.isArray(properties)) {
+    known = true;
+    for (const [name, value] of Object.entries(properties)) result.set(name, value);
+  }
+  if (Object.hasOwn(schema, 'allOf')) {
+    if (!Array.isArray(schema.allOf)) return 'has an invalid allOf';
+    for (const member of schema.allOf) {
+      const nested = strictObjectProperties(member, next, depth + 1);
+      if (typeof nested === 'string') return `has an allOf member that ${nested}`;
+      known = true;
+      for (const [name, value] of nested) result.set(name, value);
+    }
+  }
+  return known ? result : 'declares no properties (additionalProperties-only or untyped)';
+}
+
+type NestedLookup = { properties: Map<string, JsonValue> } | { absent: string } | { unverifiable: string };
+
+/** Walk `parent` from a body schema; the top level follows today's rules, nested levels the strict ones. */
+function nestedProperties(schema: JsonValue, parent: readonly string[]): NestedLookup {
+  if (parent.length > MAX_PARENT_DEPTH) return { unverifiable: `parent path deeper than ${MAX_PARENT_DEPTH}` };
+  let properties = schemaProperties(schema);
+  if (!properties) return { unverifiable: 'top-level schema cannot be verified' };
+  const seen = new Set<object>();
+  if (schema && typeof schema === 'object') seen.add(schema);
+  for (let i = 0; i < parent.length; i++) {
+    const segment = parent[i]!;
+    if (!properties.has(segment)) return { absent: `${parent.slice(0, i + 1).join('.')} does not exist` };
+    const child = properties.get(segment)!;
+    const nested = strictObjectProperties(child, seen);
+    if (typeof nested === 'string') return { unverifiable: `${parent.slice(0, i + 1).join('.')} ${nested}` };
+    if (child && typeof child === 'object') seen.add(child);
+    properties = nested;
+  }
+  return { properties };
+}
+
+/**
+ * Like `fieldSchema`, at the nested object named by `parent`. Returns the field schema, `null` when the
+ * field (or its parent) is absent, or an `Unverifiable` with a reason.
+ */
+class Unverifiable { constructor(readonly reason: string) {} }
+
+function fieldSchemaAt(operation: ApiOperation, location: Location, parent: readonly string[], name: string): JsonValue | null | Unverifiable {
+  if (!parent.length) {
+    const schema = fieldSchema(operation, location, name);
+    return schema === undefined ? new Unverifiable(`${location} fields cannot be verified`) : schema;
+  }
+  if (location === 'query') return new Unverifiable('query fields have no parent path');
+  const schemas = location === 'request' ? jsonSchemas(operation.requestBody?.content ?? []) : successResponses(operation).flatMap(response => jsonSchemas(response.content));
+  if (!schemas.length) return new Unverifiable(`operation has no JSON ${location} body`);
+  let unverifiable: string | undefined;
+  for (const schema of schemas) {
+    const lookup = nestedProperties(schema, parent);
+    if ('unverifiable' in lookup) { unverifiable ??= lookup.unverifiable; continue; }
+    if ('properties' in lookup && lookup.properties.has(name)) return lookup.properties.get(name)!;
+  }
+  return unverifiable ? new Unverifiable(unverifiable) : null;
+}
+
+const parentOf = (mapping: { parent?: string[] }): string[] => mapping.parent ?? [];
+const dotted = (parent: readonly string[], name: string) => [...parent, name].join('.');
+
 function valueMatchesSchema(value: JsonValue, schema: JsonValue): boolean {
   if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return true;
   if (Object.hasOwn(schema, 'const') && JSON.stringify(schema.const) !== JSON.stringify(value)) return false;
@@ -164,7 +246,7 @@ export function validateMigrationForReport(report: RunReport, migration: Migrati
   const renameTargets = new Map<string, number>();
   const renameSources = new Map<string, number>();
   migration.renames.forEach((mapping, i) => {
-    const key = `${mapping.operationId}\0${mapping.location}`;
+    const key = `${mapping.operationId}\0${mapping.location}\0${parentOf(mapping).join('\u0001')}`;
     if (mapping.from === mapping.to) migrationFail(`/renames/${i}`, 'rename must change the name');
     if (renameTargets.has(`${key}\0${mapping.to}`)) migrationFail(`/renames/${i}/to`, `contradictory renames: two fields renamed to ${mapping.to}`);
     renameTargets.set(`${key}\0${mapping.to}`, i);
@@ -172,7 +254,7 @@ export function validateMigrationForReport(report: RunReport, migration: Migrati
   });
   for (const [key, i] of renameSources) if (renameTargets.has(key)) migrationFail(`/renames/${i}`, 'chained or swapped renames are order-dependent and rejected');
   migration.values.forEach((mapping, i) => {
-    const key = `${mapping.operationId}\0${mapping.location}\0${mapping.name}`;
+    const key = `${mapping.operationId}\0${mapping.location}\0${parentOf(mapping).join('\u0001')}\0${mapping.name}`;
     if (renameTargets.has(key) || renameSources.has(key)) migrationFail(`/values/${i}`, `contradictory mappings: ${mapping.name} is both renamed and given a fixed value`);
   });
   migration.renames.forEach((mapping, i) => {
@@ -182,13 +264,26 @@ export function validateMigrationForReport(report: RunReport, migration: Migrati
     if (!mapping.from || !mapping.to) migrationFail(at, 'names must not be empty');
     const sources = sourcesOf(index, mapping.operationId);
     if (!sources.length) migrationFail(`${at}/operationId`, 'destination operation has no source operation in report.snapshots.old');
-    const destination = fieldSchema(target, mapping.location, mapping.to);
-    if (destination === null) migrationFail(`${at}/to`, `${mapping.location} field ${mapping.to} does not exist in destination operation`);
-    if (destination === undefined) migrationFail(`${at}/to`, `${mapping.location} fields of destination operation cannot be verified`);
-    for (const source of sources) {
-      const origin = fieldSchema(source, mapping.location, mapping.from);
-      if (origin === null) migrationFail(`${at}/from`, `${mapping.location} field ${mapping.from} does not exist in source operation ${source.id}`);
-      if (origin === undefined) migrationFail(`${at}/from`, `${mapping.location} fields of source operation ${source.id} cannot be verified`);
+    const parent = parentOf(mapping);
+    if (!parent.length) {
+      const destination = fieldSchema(target, mapping.location, mapping.to);
+      if (destination === null) migrationFail(`${at}/to`, `${mapping.location} field ${mapping.to} does not exist in destination operation`);
+      if (destination === undefined) migrationFail(`${at}/to`, `${mapping.location} fields of destination operation cannot be verified`);
+      for (const source of sources) {
+        const origin = fieldSchema(source, mapping.location, mapping.from);
+        if (origin === null) migrationFail(`${at}/from`, `${mapping.location} field ${mapping.from} does not exist in source operation ${source.id}`);
+        if (origin === undefined) migrationFail(`${at}/from`, `${mapping.location} fields of source operation ${source.id} cannot be verified`);
+      }
+    } else {
+      if (parent.some(segment => !segment)) migrationFail(`${at}/parent`, 'parent path segments must not be empty');
+      const destination = fieldSchemaAt(target, mapping.location, parent, mapping.to);
+      if (destination === null) migrationFail(`${at}/to`, `${mapping.location} field ${dotted(parent, mapping.to)} does not exist in destination operation`);
+      if (destination instanceof Unverifiable) migrationFail(`${at}/parent`, `${mapping.location} field path ${dotted(parent, mapping.to)} of destination operation cannot be verified: ${destination.reason}`);
+      for (const source of sources) {
+        const origin = fieldSchemaAt(source, mapping.location, parent, mapping.from);
+        if (origin === null) migrationFail(`${at}/from`, `${mapping.location} field ${dotted(parent, mapping.from)} does not exist in source operation ${source.id}`);
+        if (origin instanceof Unverifiable) migrationFail(`${at}/parent`, `${mapping.location} field path ${dotted(parent, mapping.from)} of source operation ${source.id} cannot be verified: ${origin.reason}`);
+      }
     }
     index.renames.set(mapping.operationId, [...(index.renames.get(mapping.operationId) ?? []), mapping]);
   });
@@ -198,9 +293,18 @@ export function validateMigrationForReport(report: RunReport, migration: Migrati
     if (!target) migrationFail(`${at}/operationId`, `unknown destination operation ${mapping.operationId} in report.snapshots.new`);
     if (!sourcesOf(index, mapping.operationId).length) migrationFail(`${at}/operationId`, 'destination operation has no source operation in report.snapshots.old');
     if (!['string', 'number', 'boolean'].includes(typeof mapping.value)) migrationFail(`${at}/value`, 'only string, number and boolean values are supported');
-    const schema = fieldSchema(target, mapping.location, mapping.name);
-    if (schema === null) migrationFail(`${at}/name`, `${mapping.location} field ${mapping.name} does not exist in destination operation`);
-    if (schema === undefined) migrationFail(`${at}/name`, `${mapping.location} fields of destination operation cannot be verified`);
+    const parent = parentOf(mapping);
+    let schema: JsonValue | null | undefined | Unverifiable;
+    if (!parent.length) {
+      schema = fieldSchema(target, mapping.location, mapping.name);
+      if (schema === null) migrationFail(`${at}/name`, `${mapping.location} field ${mapping.name} does not exist in destination operation`);
+      if (schema === undefined) migrationFail(`${at}/name`, `${mapping.location} fields of destination operation cannot be verified`);
+    } else {
+      if (parent.some(segment => !segment)) migrationFail(`${at}/parent`, 'parent path segments must not be empty');
+      schema = fieldSchemaAt(target, mapping.location, parent, mapping.name);
+      if (schema === null) migrationFail(`${at}/name`, `${mapping.location} field ${dotted(parent, mapping.name)} does not exist in destination operation`);
+      if (schema instanceof Unverifiable) migrationFail(`${at}/parent`, `${mapping.location} field path ${dotted(parent, mapping.name)} of destination operation cannot be verified: ${schema.reason}`);
+    }
     if (!valueMatchesSchema(mapping.value, schema)) migrationFail(`${at}/value`, `value does not satisfy the declared type/enum of ${mapping.name}`);
     index.values.set(mapping.operationId, [...(index.values.get(mapping.operationId) ?? []), mapping]);
   });
@@ -579,6 +683,8 @@ interface MappingOutcome {
   kind: 'operation' | 'rename' | 'value';
   location?: Location;
   names: string[];
+  /** Property path of the object holding the field (request/response); empty or omitted means top level. */
+  parent?: string[];
   status: 'applied' | 'absent' | 'failed';
   reason: string;
   edits: Draft[];
@@ -593,12 +699,14 @@ function pointerSegments(pointer: string): string[] {
  * Names a change is about, derived only from structured data: parameter source pointers, `properties`
  * segments of source pointers and the optional `fieldPath` (top-level fields only). Prose is never parsed.
  */
-function changeSubjects(change: ApiChange, report: RunReport): { names: Set<string>; unsupported?: string } {
+function changeSubjects(change: ApiChange, report: RunReport): { names: Set<string>; parent?: string[]; unsupported?: string } {
   const names = new Set<string>();
   const fieldPath = (change as { fieldPath?: unknown }).fieldPath;
   if ((change.location === 'request' || change.location === 'response') && Array.isArray(fieldPath) && fieldPath.every(item => typeof item === 'string')) {
     if (fieldPath.length === 1) names.add(fieldPath[0]!);
-    else return { names, unsupported: fieldPath.length ? `nested field ${fieldPath.join('.')} is outside the supported repair scope` : 'change affects the whole body schema' };
+    // Nested: linked only to mappings whose parent equals the path prefix and whose name is the last segment.
+    else if (fieldPath.length > 1) return { names: new Set([fieldPath[fieldPath.length - 1]!]), parent: fieldPath.slice(0, -1) };
+    else return { names, unsupported: 'change affects the whole body schema' };
   }
   const operations = [...report.snapshots.old.operations, ...report.snapshots.new.operations];
   for (const location of [change.before, change.after]) {
@@ -708,7 +816,7 @@ function planOperation(ctx: UseContext, url: UrlLiteral | string, match: PathMat
 }
 
 function renameInObject(info: ObjectInfo, mapping: RenameMapping, source: ts.SourceFile, label: string): MappingOutcome {
-  const base = { kind: 'rename' as const, location: mapping.location, names: [mapping.from, mapping.to] };
+  const base = { kind: 'rename' as const, location: mapping.location, names: [mapping.from, mapping.to], ...(parentOf(mapping).length ? { parent: parentOf(mapping) } : {}) };
   const members = info.keys.get(mapping.from) ?? [];
   if (info.opaque && !members.length) return { ...base, status: 'failed', reason: `${label} has spread/computed members; ${mapping.from} cannot be ruled out`, edits: [] };
   if (!members.length) return { ...base, status: 'absent', reason: `${label} has no ${mapping.from} property`, edits: [] };
@@ -717,7 +825,9 @@ function renameInObject(info: ObjectInfo, mapping: RenameMapping, source: ts.Sou
   if (info.keys.has(mapping.to)) return { ...base, status: 'failed', reason: `${label} already defines ${mapping.to}`, edits: [] };
   const member = members[0]!;
   const quote = preferredQuote(source, info.node);
-  const reason = `Rename ${mapping.location} field ${mapping.from} → ${mapping.to} (explicit rename mapping)`;
+  const reason = parentOf(mapping).length
+    ? `Rename ${mapping.location} field ${dotted(parentOf(mapping), mapping.from)} → ${dotted(parentOf(mapping), mapping.to)} (explicit nested rename mapping, parent ${parentOf(mapping).join('.')})`
+    : `Rename ${mapping.location} field ${mapping.from} → ${mapping.to} (explicit rename mapping)`;
   if (ts.isShorthandPropertyAssignment(member)) {
     return { ...base, status: 'applied', reason, edits: [{ start: member.name.getStart(source), end: member.name.getEnd(), newText: `${keyText(mapping.to, quote)}: ${member.name.text}`, reason }] };
   }
@@ -728,7 +838,7 @@ function renameInObject(info: ObjectInfo, mapping: RenameMapping, source: ts.Sou
 }
 
 function valueInObject(info: ObjectInfo, mapping: RequiredValueMapping, source: ts.SourceFile, label: string): MappingOutcome {
-  const base = { kind: 'value' as const, location: mapping.location, names: [mapping.name] };
+  const base = { kind: 'value' as const, location: mapping.location, names: [mapping.name], ...(parentOf(mapping).length ? { parent: parentOf(mapping) } : {}) };
   const members = info.keys.get(mapping.name) ?? [];
   if (members.length) {
     const member = members[0]!;
@@ -739,7 +849,9 @@ function valueInObject(info: ObjectInfo, mapping: RequiredValueMapping, source: 
   if (info.opaque) return { ...base, status: 'failed', reason: `${label} has spread/computed members that may define ${mapping.name}`, edits: [] };
   const quote = preferredQuote(source, info.node);
   const entry = `${keyText(mapping.name, quote)}: ${valueText(mapping.value, quote)}`;
-  const reason = `Add required ${mapping.location} field ${mapping.name} = ${JSON.stringify(mapping.value)} (explicit value mapping)`;
+  const reason = parentOf(mapping).length
+    ? `Add required ${mapping.location} field ${dotted(parentOf(mapping), mapping.name)} = ${JSON.stringify(mapping.value)} (explicit nested value mapping, parent ${parentOf(mapping).join('.')})`
+    : `Add required ${mapping.location} field ${mapping.name} = ${JSON.stringify(mapping.value)} (explicit value mapping)`;
   const properties = info.node.properties;
   if (!properties.length) {
     const open = info.node.getStart(source) + 1;
@@ -749,6 +861,29 @@ function valueInObject(info: ObjectInfo, mapping: RequiredValueMapping, source: 
   const multiline = source.getLineAndCharacterOfPosition(last.getStart(source)).line !== source.getLineAndCharacterOfPosition(info.node.getStart(source)).line;
   const text = multiline ? `,\n${lineIndent(source, last.getStart(source))}${entry}` : `, ${entry}`;
   return { ...base, status: 'applied', reason, edits: [{ start: last.getEnd(), end: last.getEnd(), newText: text, reason }] };
+}
+
+/**
+ * Follow `parent` through nested inline object literals by static keys. Every object on the path must be
+ * free of spread/computed members and duplicate keys; anything else is reported as a reason.
+ */
+function nestedObject(info: ObjectInfo, parent: readonly string[], call: ts.CallExpression, source: ts.SourceFile, label: string): { info: ObjectInfo; label: string } | { absent: string } | { failed: string } {
+  let current = info;
+  let currentLabel = label;
+  for (const segment of parent) {
+    const members = current.keys.get(segment) ?? [];
+    if (current.opaque) return { failed: `${currentLabel} has spread/computed members; nested path ${parent.join('.')} cannot be followed safely` };
+    if (!members.length) return { absent: `${currentLabel} has no ${segment} property` };
+    if (members.length > 1) return { failed: `${currentLabel} defines ${segment} more than once` };
+    const member = members[0]!;
+    if (!ts.isPropertyAssignment(member)) return { failed: `${currentLabel}.${segment} is not an inline object literal` };
+    const next = objectInfo(member.initializer, call, source);
+    if (typeof next === 'string' || !next) return { failed: `${currentLabel}.${segment} is not an inline object literal` };
+    current = next;
+    currentLabel = `${currentLabel}.${segment}`;
+  }
+  if (current.opaque && parent.length) return { failed: `${currentLabel} has spread/computed members` };
+  return { info: current, label: currentLabel };
 }
 
 function renameInUrl(url: UrlLiteral, query: QueryInfo, mapping: RenameMapping): MappingOutcome {
@@ -794,42 +929,164 @@ function valueInUrl(url: UrlLiteral, query: QueryInfo, match: PathMatch | string
   return { ...base, status: 'applied', reason, edits: [{ start: position, end: position, newText: text, reason }] };
 }
 
-/** Rename statically bound response property accesses after checking the response object does not escape. */
-function renameResponse(ctx: UseContext, mapping: RenameMapping): MappingOutcome {
-  const base = { kind: 'rename' as const, location: mapping.location, names: [mapping.from, mapping.to] };
+/**
+ * Response variables of the call: the symbols behind the scanner's `response-property` bindings, plus the
+ * variables the scanner binds the same way (`const res = await call; const data = await res.json()` for
+ * fetch, `const response = await call` for axios) so that a variable read only through destructuring is
+ * found as well. For axios the root is the response object and reads must go through `.data`.
+ */
+function responseRoots(ctx: UseContext): Set<ts.Symbol> {
   const { source, checker } = ctx.parsed;
-  const bindings = ctx.use.bindings.filter(binding => binding.kind === 'response-property' && binding.name === mapping.from);
-  if (!bindings.length) return { ...base, status: 'absent', reason: `no statically bound access to response field ${mapping.from}`, edits: [] };
-  if (!isIdentifierName(mapping.to)) return { ...base, status: 'failed', reason: `${mapping.to} is not a valid identifier for property access`, edits: [] };
   const roots = new Set<ts.Symbol>();
-  const edits: Draft[] = [];
-  const reason = `Rename response field access ${mapping.from} → ${mapping.to} (explicit rename mapping)`;
-  for (const binding of bindings) {
-    const token = findIdentifier(source, binding.range.start, binding.range.end);
-    const access = token?.parent;
-    if (!token || token.text !== mapping.from || !access || !ts.isPropertyAccessExpression(access) || access.name !== token) return { ...base, status: 'failed', reason: 'response binding no longer matches the AST', edits: [] };
+  for (const binding of ctx.use.bindings) {
+    if (binding.kind !== 'response-property') continue;
+    const access = findIdentifier(source, binding.range.start, binding.range.end)?.parent;
+    if (!access || !ts.isPropertyAccessExpression(access)) continue;
     let root: ts.Expression = access.expression;
     if (ctx.use.client === 'axios' && ts.isPropertyAccessExpression(root) && root.name.text === 'data') root = root.expression;
     const symbol = ts.isIdentifier(root) ? checker.getSymbolAtLocation(root) : undefined;
-    if (!symbol) return { ...base, status: 'failed', reason: 'response variable could not be resolved', edits: [] };
-    roots.add(symbol);
-    edits.push({ start: binding.range.start, end: binding.range.end, newText: mapping.to, reason });
+    if (symbol) roots.add(symbol);
   }
-  // Any other use of the response variable (destructuring, element access, passing it on) may still read the old field.
-  let escapes = false;
+  const constDeclaration = (node: ts.Node): node is ts.VariableDeclaration & { name: ts.Identifier; initializer: ts.Expression } =>
+    ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && !!node.initializer && !!(node.parent.flags & ts.NodeFlags.Const);
+  const awaited = (node: ts.Expression) => ts.isAwaitExpression(node) ? node.expression : node;
+  const responses = new Set<ts.Symbol>();
+  function findResponses(node: ts.Node): void {
+    if (constDeclaration(node) && awaited(node.initializer) === ctx.call) {
+      const symbol = checker.getSymbolAtLocation(node.name);
+      if (symbol) responses.add(symbol);
+    }
+    ts.forEachChild(node, findResponses);
+  }
+  findResponses(source);
+  if (ctx.use.client === 'axios') { for (const symbol of responses) roots.add(symbol); return roots; }
+  function findData(node: ts.Node): void {
+    if (constDeclaration(node)) {
+      const initializer = awaited(node.initializer);
+      if (ts.isCallExpression(initializer) && ts.isPropertyAccessExpression(initializer.expression) && initializer.expression.name.text === 'json'
+        && ts.isIdentifier(initializer.expression.expression) && responses.has(checker.getSymbolAtLocation(initializer.expression.expression)!)) {
+        const symbol = checker.getSymbolAtLocation(node.name);
+        if (symbol) roots.add(symbol);
+      }
+    }
+    ts.forEachChild(node, findData);
+  }
+  findData(source);
+  return roots;
+}
+
+/**
+ * Rename reads of response field `parent.from` reached from the call's response variable: property-access
+ * chains (including optional chaining) and `const`/`let` object destructuring from the variable. Only the leaf
+ * name changes. Element access, aliasing, rest/computed patterns, destructuring assignments and any other use
+ * of an object on the path are never edited and leave a caveat.
+ */
+function renameResponse(ctx: UseContext, mapping: RenameMapping): MappingOutcome {
+  const parent = parentOf(mapping);
+  const target = [...parent, mapping.from];
+  const base = { kind: 'rename' as const, location: mapping.location, names: [mapping.from, mapping.to], ...(parent.length ? { parent } : {}) };
+  const { source, checker } = ctx.parsed;
+  const roots = responseRoots(ctx);
+  if (!roots.size) return { ...base, status: 'absent', reason: `no statically bound access to response field ${dotted(parent, mapping.from)}`, edits: [] };
+  const reason = parent.length
+    ? `Rename response field access ${dotted(parent, mapping.from)} → ${dotted(parent, mapping.to)} (explicit nested rename mapping, parent ${parent.join('.')})`
+    : `Rename response field access ${mapping.from} → ${mapping.to} (explicit rename mapping)`;
+  const edits: Draft[] = [];
+  const caveats = new Set<string>();
+  /** Caveats that only exist since nested/destructuring support; they make a no-edit outcome partial. */
+  let specific = false;
+  let invalid: string | undefined;
+  const quote = preferredQuote(source, source);
+  const label = (depth: number) => ['response', ...target.slice(0, depth)].join('.');
+
+  function destructure(declaration: ts.VariableDeclaration, pattern: ts.ObjectBindingPattern, depth: number): void {
+    specific = true;
+    if (!(declaration.parent.flags & (ts.NodeFlags.Const | ts.NodeFlags.Let))) { caveats.add(`${label(depth)} is destructured in a var declaration, which is not edited`); return; }
+    for (let k = depth; k < target.length; k++) {
+      const segment = target[k]!;
+      const keyOf = (element: ts.BindingElement) => element.propertyName ? propertyName(element.propertyName) : ts.isIdentifier(element.name) ? element.name.text : undefined;
+      if (pattern.elements.some(element => element.dotDotDotToken)) { caveats.add(`destructuring of ${label(k)} uses a rest element that may hold ${dotted(parent, mapping.from)}`); return; }
+      if (pattern.elements.some(element => keyOf(element) === undefined)) { caveats.add(`destructuring of ${label(k)} uses computed keys`); return; }
+      const matches = pattern.elements.filter(element => keyOf(element) === segment);
+      if (!matches.length) return;
+      if (matches.length > 1) { caveats.add(`destructuring of ${label(k)} reads ${segment} more than once`); return; }
+      const element = matches[0]!;
+      if (k === target.length - 1) {
+        if (pattern.elements.some(item => keyOf(item) === mapping.to)) { caveats.add(`destructuring of ${label(k)} already reads ${mapping.to}`); return; }
+        if (element.propertyName) {
+          const name = element.propertyName;
+          const original = source.text[name.getStart(source)];
+          const text = ts.isStringLiteral(name) && (original === '"' || original === "'") ? stringLiteral(mapping.to, original) : keyText(mapping.to, quote);
+          edits.push({ start: name.getStart(source), end: name.getEnd(), newText: text, reason });
+        } else {
+          const name = element.name as ts.Identifier;
+          edits.push({ start: name.getStart(source), end: name.getEnd(), newText: `${keyText(mapping.to, quote)}: ${name.text}`, reason });
+        }
+        return;
+      }
+      if (!ts.isObjectBindingPattern(element.name)) { caveats.add(`${label(k + 1)} is bound to a variable or array pattern; its reads are not followed`); return; }
+      pattern = element.name;
+    }
+  }
+
+  function follow(start: ts.Expression): void {
+    let current: ts.Node = start;
+    let depth = 0;
+    for (;;) {
+      let up: ts.Node = current.parent;
+      while ((ts.isParenthesizedExpression(up) || ts.isNonNullExpression(up)) && up.expression === current) { current = up; up = up.parent; }
+      if (ts.isPropertyAccessExpression(up) && up.expression === current) {
+        if (up.name.text !== target[depth]) return; // a different field: not affected
+        depth++;
+        if (depth === target.length) {
+          if (!isIdentifierName(mapping.to)) { invalid = `${mapping.to} is not a valid identifier for property access`; return; }
+          edits.push({ start: up.name.getStart(source), end: up.name.getEnd(), newText: mapping.to, reason });
+          return;
+        }
+        current = up;
+        continue;
+      }
+      if (ts.isElementAccessExpression(up) && up.expression === current) {
+        if (depth) specific = true;
+        caveats.add(`element access on ${label(depth)} is not followed`);
+        return;
+      }
+      if (ts.isVariableDeclaration(up) && up.initializer === current && ts.isObjectBindingPattern(up.name)) { destructure(up, up.name, depth); return; }
+      if (ts.isBinaryExpression(up) && up.right === current && up.operatorToken.kind === ts.SyntaxKind.EqualsToken && (ts.isObjectLiteralExpression(up.left) || ts.isArrayLiteralExpression(up.left))) {
+        specific = true;
+        caveats.add(`${label(depth)} is destructured in an assignment, which is not edited`);
+        return;
+      }
+      if (depth) specific = true;
+      caveats.add(depth
+        ? `${label(depth)} is also used in ways APIPatch cannot follow; other reads of ${dotted(parent, mapping.from)} may remain`
+        : `the response object is also used in ways APIPatch cannot follow; other reads of ${dotted(parent, mapping.from)} may remain`);
+      return;
+    }
+  }
+
   function visit(node: ts.Node): void {
     if (ts.isIdentifier(node) && roots.has(checker.getSymbolAtLocation(node)!)) {
-      const parent = node.parent;
-      const declaration = ts.isVariableDeclaration(parent) && parent.name === node;
-      let direct = ts.isPropertyAccessExpression(parent) && parent.expression === node;
-      // axios: response.status is harmless; response.data must itself be followed by a property access.
-      if (direct && ctx.use.client === 'axios' && (parent as ts.PropertyAccessExpression).name.text === 'data') direct = ts.isPropertyAccessExpression(parent.parent) && parent.parent.expression === parent;
-      if (!declaration && !direct) escapes = true;
+      const parentNode = node.parent;
+      const declaration = ts.isVariableDeclaration(parentNode) && parentNode.name === node;
+      if (!declaration) {
+        if (ctx.use.client !== 'axios') follow(node);
+        else if (ts.isPropertyAccessExpression(parentNode) && parentNode.expression === node) {
+          // axios: response.status is harmless; reads of the body go through response.data.
+          if (parentNode.name.text === 'data') follow(parentNode);
+        } else caveats.add(`the response object is also used in ways APIPatch cannot follow; other reads of ${dotted(parent, mapping.from)} may remain`);
+      }
     }
     ts.forEachChild(node, visit);
   }
   visit(source);
-  return { ...base, status: 'applied', reason, edits, ...(escapes ? { caveat: `the response object is also used in ways APIPatch cannot follow; other reads of ${mapping.from} may remain` } : {}) };
+  if (invalid) return { ...base, status: 'failed', reason: invalid, edits: [] };
+  const caveat = caveats.size ? [...caveats].join('; ') : undefined;
+  if (!edits.length) {
+    if (caveat && (specific || parent.length)) return { ...base, status: 'applied', reason: `no response read of ${dotted(parent, mapping.from)} could be edited`, edits: [], caveat };
+    return { ...base, status: 'absent', reason: `no statically bound access to response field ${dotted(parent, mapping.from)}`, edits: [] };
+  }
+  return { ...base, status: 'applied', reason, edits, ...(caveat ? { caveat } : {}) };
 }
 
 function planUse(ctx: UseContext, index: MigrationIndex): { outcomes: MappingOutcome[]; fatal?: string } {
@@ -849,9 +1106,16 @@ function planUse(ctx: UseContext, index: MigrationIndex): { outcomes: MappingOut
     if (mapping.location === 'response') { outcomes.push(renameResponse(ctx, mapping)); continue; }
     const names = [mapping.from, mapping.to];
     if (mapping.location === 'request') {
-      if (typeof body === 'string') outcomes.push({ kind: 'rename', location: 'request', names, status: 'failed', reason: `request body ${body}`, edits: [] });
-      else if (!body) outcomes.push({ kind: 'rename', location: 'request', names, status: 'absent', reason: 'call has no request body', edits: [] });
-      else outcomes.push(renameInObject(body, mapping, ctx.parsed.source, 'request body'));
+      const parent = parentOf(mapping);
+      const at = parent.length ? { parent } : {};
+      if (typeof body === 'string') outcomes.push({ kind: 'rename', location: 'request', names, ...at, status: 'failed', reason: `request body ${body}`, edits: [] });
+      else if (!body) outcomes.push({ kind: 'rename', location: 'request', names, ...at, status: 'absent', reason: 'call has no request body', edits: [] });
+      else {
+        const nested = nestedObject(body, parent, ctx.call, ctx.parsed.source, 'request body');
+        if ('absent' in nested) outcomes.push({ kind: 'rename', location: 'request', names, ...at, status: 'absent', reason: nested.absent, edits: [] });
+        else if ('failed' in nested) outcomes.push({ kind: 'rename', location: 'request', names, ...at, status: 'failed', reason: nested.failed, edits: [] });
+        else outcomes.push(renameInObject(nested.info, mapping, ctx.parsed.source, nested.label));
+      }
       continue;
     }
     if (typeof params === 'string') { outcomes.push({ kind: 'rename', location: 'query', names, status: 'failed', reason: `request options ${params}`, edits: [] }); continue; }
@@ -864,9 +1128,16 @@ function planUse(ctx: UseContext, index: MigrationIndex): { outcomes: MappingOut
   for (const mapping of index.values.get(ctx.target.id) ?? []) {
     const names = [mapping.name];
     if (mapping.location === 'request') {
-      if (typeof body === 'string') outcomes.push({ kind: 'value', location: 'request', names, status: 'failed', reason: `request body ${body}`, edits: [] });
-      else if (!body) outcomes.push({ kind: 'value', location: 'request', names, status: 'failed', reason: 'call has no request body object to extend', edits: [] });
-      else outcomes.push(valueInObject(body, mapping, ctx.parsed.source, 'request body'));
+      const parent = parentOf(mapping);
+      const at = parent.length ? { parent } : {};
+      if (typeof body === 'string') outcomes.push({ kind: 'value', location: 'request', names, ...at, status: 'failed', reason: `request body ${body}`, edits: [] });
+      else if (!body) outcomes.push({ kind: 'value', location: 'request', names, ...at, status: 'failed', reason: 'call has no request body object to extend', edits: [] });
+      else {
+        const nested = nestedObject(body, parent, ctx.call, ctx.parsed.source, 'request body');
+        if ('absent' in nested) outcomes.push({ kind: 'value', location: 'request', names, ...at, status: 'failed', reason: `${nested.absent}; no nested object to extend`, edits: [] });
+        else if ('failed' in nested) outcomes.push({ kind: 'value', location: 'request', names, ...at, status: 'failed', reason: nested.failed, edits: [] });
+        else outcomes.push(valueInObject(nested.info, mapping, ctx.parsed.source, nested.label));
+      }
       continue;
     }
     if (typeof params === 'string') { outcomes.push({ kind: 'value', location: 'query', names, status: 'failed', reason: `request options ${params}`, edits: [] }); continue; }
@@ -938,6 +1209,7 @@ export async function planRepairs(options: PlanRepairsOptions): Promise<RepairPl
   for (const use of useOrder) {
     const findings = byUse.get(use.id)!;
     const pendAll = (reason: string) => { for (const finding of findings) states.set(finding.id, { status: 'pending', reason }); };
+    if (use.via) { pendAll(`call is made through wrapper ${use.via.name} (${use.via.file}:${use.via.range.line}); wrapper calls are not edited in this release`); continue; }
     if (use.resolution === 'unresolved' || use.confidence === 'low') { pendAll('call target is unresolved or low confidence; review the API origin and URL before editing'); continue; }
     if (!use.method) { pendAll('HTTP method of the call is unknown'); continue; }
     if (migration.allowedOrigins.length && (!use.origin || !migration.allowedOrigins.includes(use.origin))) { pendAll(use.origin ? `origin ${use.origin} is not in migration.allowedOrigins` : 'origin of the call is unknown and migration.allowedOrigins is restricted'); continue; }
@@ -994,11 +1266,12 @@ export async function planRepairs(options: PlanRepairsOptions): Promise<RepairPl
         continue;
       }
       if (!['query', 'request', 'response'].includes(change.location)) { states.set(finding.id, { status: 'pending', reason: `${change.location} changes are not repaired automatically` }); continue; }
-      const { names: subjects, unsupported } = changeSubjects(change, report);
+      const { names: subjects, parent: subjectParent, unsupported } = changeSubjects(change, report);
       if (unsupported) { states.set(finding.id, { status: 'pending', reason: unsupported }); continue; }
       if (!subjects.size) { states.set(finding.id, { status: 'pending', reason: 'the changed field is not identified structurally (no parameter pointer or fieldPath)' }); continue; }
-      const relevant = outcomes.filter(outcome => outcome.location === change.location && outcome.names.some(name => subjects.has(name)));
-      if (!relevant.length) { states.set(finding.id, { status: 'pending', reason: `no explicit migration mapping for ${[...subjects].join(', ')}` }); continue; }
+      const wanted = JSON.stringify(subjectParent ?? []);
+      const relevant = outcomes.filter(outcome => outcome.location === change.location && JSON.stringify(outcome.parent ?? []) === wanted && outcome.names.some(name => subjects.has(name)));
+      if (!relevant.length) { states.set(finding.id, { status: 'pending', reason: subjectParent ? `nested field ${dotted(subjectParent, [...subjects][0]!)} is outside the supported repair scope: no explicit nested migration mapping with parent ${subjectParent.join('.')}` : `no explicit migration mapping for ${[...subjects].join(', ')}` }); continue; }
       const applied = relevant.filter(outcome => outcome.status === 'applied');
       const failed = relevant.filter(outcome => outcome.status === 'failed');
       for (const outcome of applied) attribution.set(outcome, [...(attribution.get(outcome) ?? []), finding.id]);
