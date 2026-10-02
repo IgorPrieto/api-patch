@@ -9,7 +9,7 @@ APIPatch se publica como el paquete sin ámbito `apipatch`. Las prerreleases (`0
 1. Coinciden la versión de `package.json`, `docs/RELEASE_NOTES*.md` y las líneas de instalación del README.
 2. `npm ci && npm run check` pasa en local y en CI (Node 24 y 26, incluidas las pruebas e2e del panel).
 3. `npm pack`, instalar el tarball en un directorio vacío y ejecutar `npx apipatch --version` y `npx apipatch demo --verify-level4`.
-4. `npm publish --dry-run --tag beta` muestra la lista de archivos esperada (unos 130, menos de 300 kB comprimido) y la etiqueta `beta`.
+4. `npm publish --dry-run --tag beta` muestra la lista de archivos esperada (unos 130, unos 330 kB comprimido) y la etiqueta `beta`.
 
 ## Primera publicación (manual, una sola vez)
 

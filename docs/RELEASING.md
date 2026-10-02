@@ -9,7 +9,7 @@ APIPatch is published as the unscoped package `apipatch`. Prereleases (`0.1.0-be
 1. `package.json` version, `docs/RELEASE_NOTES*.md`, and README install lines agree.
 2. `npm ci && npm run check` passes locally and in CI (Node 24 and 26, including the panel e2e tests).
 3. `npm pack`, install the tarball in an empty directory, then run `npx apipatch --version` and `npx apipatch demo --verify-level4`.
-4. `npm publish --dry-run --tag beta` shows the expected file list (about 130 files, under 300 kB packed) and the `beta` tag.
+4. `npm publish --dry-run --tag beta` shows the expected file list (about 130 files, about 330 kB packed) and the `beta` tag.
 
 ## First publication (manual, once)
 
