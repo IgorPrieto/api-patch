@@ -1,6 +1,6 @@
 {
   "name": "apipatch",
-  "version": "0.1.0-beta.3",
+  "version": "0.1.0-beta.4",
   "private": false,
   "description": "Local OpenAPI change analysis and verifiable consumer patches",
   "license": "MIT",
@@ -42,7 +42,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "check": "npm run build && npm test"
+    "check": "npm run build && npm test",
+    "prepack": "npm run build",
+    "prepublishOnly": "node scripts/check-dist-tag.mjs"
   },
   "dependencies": {
     "commander": "15.0.0",
@@ -53,5 +55,8 @@
   "devDependencies": {
     "@types/node": "26.6.3",
     "vitest": "5.0.3"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
